@@ -4,8 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from egrepd import text_extraction
-
+from dgrep import text_extraction
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -52,9 +51,7 @@ def test_pdf_extractor_falls_back_to_pypdf(monkeypatch) -> None:
     def fail_pymupdf(path: Path) -> list[str]:
         raise RuntimeError("PyMuPDF could not read the document")
 
-    monkeypatch.setattr(
-        text_extraction, "extract_pdf_text_pymupdf", fail_pymupdf
-    )
+    monkeypatch.setattr(text_extraction, "extract_pdf_text_pymupdf", fail_pymupdf)
     monkeypatch.setattr(
         text_extraction, "extract_pdf_text_pypdf", lambda path: expected
     )

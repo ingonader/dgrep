@@ -523,7 +523,7 @@ def _run() -> int:
 
         # Extract each selected member to a temporary file before reusing search_file.
         if archive_members:
-            with tempfile.TemporaryDirectory(prefix="egrepd_archive_") as temp_dir:
+            with tempfile.TemporaryDirectory(prefix="dgrep_archive_") as temp_dir:
                 temp_root = Path(temp_dir)
                 for index, (archive_path, archive_type, member_name, _) in enumerate(
                     archive_members, start=1

@@ -1,6 +1,6 @@
-# egrepd
+# dgrep
 
-`egrepd` searches files for a regular expression (similar to `grep` or `egrep`). The search is not limited to plain-text files, the tool can extract text from common formats. By default, files with the following extensions are searched:
+`dgrep` searches files for a regular expression (similar to `grep` or `egrep`). The search is not limited to plain-text files, the tool can extract text from common formats. By default, files with the following extensions are searched:
 
 * `.txt`: Plain-text files.
 * `.md`: Plain-text markdown files.
@@ -20,24 +20,24 @@ This tool has been developed for my own personal use. It was only tested on Linu
 
 ## Installation
 
-`egrepd` requires Python 3.12 or newer. The simplest way to run it without installing it permanently is with [`uv`](https://docs.astral.sh/uv/):
+`dgrep` requires Python 3.12 or newer. The simplest way to run it without installing it permanently is with [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-uvx egrepd --help
+uvx dgrep --help
 ```
 
 `uvx` downloads and runs the published package in an isolated environment. Alternatively, install it as a persistent command-line tool:
 
 ```bash
-uv tool install egrepd
-egrepd --help
+uv tool install dgrep
+dgrep --help
 ```
 
 To run from a checkout of this repository, install the project dependencies and invoke its command with `uv`:
 
 ```bash
 uv sync
-uv run egrepd --help
+uv run dgrep --help
 ```
 
 To install the development dependencies and run the test suite:
@@ -50,13 +50,13 @@ uv run pytest
 To measure test coverage and show uncovered source lines, run:
 
 ```bash
-uv run pytest --cov=egrepd --cov-report=term-missing
+uv run pytest --cov=dgrep --cov-report=term-missing
 ```
 
 To create a browsable HTML report instead, run:
 
 ```bash
-uv run pytest --cov=egrepd --cov-report=html
+uv run pytest --cov=dgrep --cov-report=html
 ```
 
 Open `htmlcov/index.html` to browse the report.
@@ -66,13 +66,13 @@ To keep a human-readable snapshot in Git for comparison, generate and commit a
 Markdown coverage report:
 
 ```bash
-uv run pytest --cov=egrepd --cov-report=term-missing \
+uv run pytest --cov=dgrep --cov-report=term-missing \
   --cov-report=markdown:coverage-report.md
 ```
 
 Commit `coverage-report.md` when you want to update the checked-in snapshot.
 
-Most document formats are handled by Python packages installed with `egrepd`. Two legacy formats need additional system programs:
+Most document formats are handled by Python packages installed with `dgrep`. Two legacy formats need additional system programs:
 
 * `.doc` files require `antiword` (on Debian or Ubuntu: `sudo apt install antiword`).
 * `.ppt` files require LibreOffice Impress (on Debian or Ubuntu:
@@ -83,39 +83,39 @@ These system programs are only needed when searching those formats. PDF, DOCX, P
 ## Usage
 
 ```text
-egrepd [OPTIONS] PATTERN PATH [PATH ...]
+dgrep [OPTIONS] PATTERN PATH [PATH ...]
 ```
 
 For example, search the default document types under a directory:
 
 ```bash
-uvx egrepd 'whale|sea' ./books
+uvx dgrep 'whale|sea' ./books
 ```
 
 Search a particular file, ignoring case and showing two lines of context on each side:
 
 ```bash
-uvx egrepd -i -C 2 'chapter\s+[0-9]+' ./books/novel.txt
+uvx dgrep -i -C 2 'chapter\s+[0-9]+' ./books/novel.txt
 ```
 
 Search source files by extension (the extension selector also accepts regexes)
 and filter file names by a regular expression:
 
 ```bash
-uvx egrepd -e 'py|js' -f 'test|example' 'TODO|FIXME' ./project
+uvx dgrep -e 'py|js' -f 'test|example' 'TODO|FIXME' ./project
 ```
 
 Enable archive searching with `-a`:
 
 ```bash
-uvx egrepd -a 'search pattern' ./downloads
+uvx dgrep -a 'search pattern' ./downloads
 ```
 
-Use quotes around patterns containing shell metacharacters such as `|`, `*`, parentheses, or spaces so the shell passes the complete regular expression to `egrepd`. Expressions use Python's regular-expression syntax.
+Use quotes around patterns containing shell metacharacters such as `|`, `*`, parentheses, or spaces so the shell passes the complete regular expression to `dgrep`. Expressions use Python's regular-expression syntax.
 
 ## Command-line options
 
-Run `egrepd --help` (or `uvx egrepd --help`) to see the options in the terminal.
+Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
 
 | Option | Description |
 | --- | --- |

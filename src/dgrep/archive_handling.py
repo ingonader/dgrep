@@ -237,7 +237,7 @@ def copy_archive_member(
 
         # py7zr extracts to disk, so verify the resolved member remains in the
         # temporary root before opening it.
-        with tempfile.TemporaryDirectory(prefix="egrepd_7z_") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="dgrep_7z_") as temp_dir:
             root = Path(temp_dir).resolve()
             with py7zr.SevenZipFile(archive_path, mode="r") as archive:
                 archive.extract(path=root, targets=[member_name])

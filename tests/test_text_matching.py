@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from egrepd import text_matching
+from dgrep import text_matching
 
 
 def test_hyperlink_formats_path_as_terminal_uri(tmp_path: Path) -> None:
@@ -30,27 +30,34 @@ def test_truncate_match_line_shows_centered_excerpts() -> None:
     line = "0123456789abcdefghij"
 
     assert (
-        text_matching.truncate_match_line(
-            line, re.compile(r"34|ef"), 6, "", ""
-        )
+        text_matching.truncate_match_line(line, re.compile(r"34|ef"), 6, "", "")
         == "...123456...cdefgh..."
     )
 
 
 def test_truncate_match_line_keeps_long_matches_and_highlights() -> None:
-    assert text_matching.truncate_match_line(
-        "0123456789abcdefghij", re.compile("3456789"), 4, "<", ">"
-    ) == "...<3456789>..."
+    assert (
+        text_matching.truncate_match_line(
+            "0123456789abcdefghij", re.compile("3456789"), 4, "<", ">"
+        )
+        == "...<3456789>..."
+    )
 
-    assert text_matching.truncate_match_line(
-        "one hit two hit", re.compile("hit"), 20, "<", ">"
-    ) == "one <hit> two <hit>"
+    assert (
+        text_matching.truncate_match_line(
+            "one hit two hit", re.compile("hit"), 20, "<", ">"
+        )
+        == "one <hit> two <hit>"
+    )
 
 
 def test_truncate_match_line_returns_empty_when_no_match() -> None:
-    assert text_matching.truncate_match_line(
-        "nothing here", re.compile("missing"), 5, "", ""
-    ) == "..."
+    assert (
+        text_matching.truncate_match_line(
+            "nothing here", re.compile("missing"), 5, "", ""
+        )
+        == "..."
+    )
 
 
 @pytest.mark.parametrize(
@@ -82,9 +89,7 @@ def test_search_file_prints_matches_and_merged_context(
         ],
     )
 
-    count = text_matching.search_file(
-        path, re.compile("needle"), before=1, after=1
-    )
+    count = text_matching.search_file(path, re.compile("needle"), before=1, after=1)
 
     captured = capsys.readouterr()
     assert count == 2
@@ -106,9 +111,7 @@ def test_search_file_formats_archive_member_link(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "archive.zip"
-    monkeypatch.setattr(
-        text_matching, "extract_text", lambda source: ["fake match"]
-    )
+    monkeypatch.setattr(text_matching, "extract_text", lambda source: ["fake match"])
 
     count = text_matching.search_file(
         path,
@@ -135,13 +138,14 @@ def test_search_file_without_matches_prints_nothing(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        text_matching, "extract_text", lambda source: ["fake text"]
-    )
+    monkeypatch.setattr(text_matching, "extract_text", lambda source: ["fake text"])
 
-    assert text_matching.search_file(
-        tmp_path / "fake.txt", re.compile("missing"), before=0, after=0
-    ) == 0
+    assert (
+        text_matching.search_file(
+            tmp_path / "fake.txt", re.compile("missing"), before=0, after=0
+        )
+        == 0
+    )
     assert capsys.readouterr().out == ""
 
 
@@ -156,9 +160,7 @@ def test_search_file_reports_extraction_error(
     monkeypatch.setattr(text_matching, "extract_text", fail_extraction)
     path = tmp_path / "fake.txt"
 
-    assert text_matching.search_file(
-        path, re.compile("needle"), before=0, after=0
-    ) == 0
+    assert text_matching.search_file(path, re.compile("needle"), before=0, after=0) == 0
     captured = capsys.readouterr()
     assert captured.out == ""
     assert f"Warning: cannot read {path}: fake read failure" in captured.err

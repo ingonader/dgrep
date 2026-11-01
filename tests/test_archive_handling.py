@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from egrepd import archive_handling
-
+from dgrep import archive_handling
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -86,9 +85,12 @@ def test_sort_paths_by_modification_time(tmp_path: Path) -> None:
     ],
 )
 def test_is_allowed_extension(suffix: str, expected: bool) -> None:
-    assert archive_handling.is_allowed_extension(
-        suffix, [re.compile(r"md"), re.compile(r"\.txt")]
-    ) is expected
+    assert (
+        archive_handling.is_allowed_extension(
+            suffix, [re.compile(r"md"), re.compile(r"\.txt")]
+        )
+        is expected
+    )
 
 
 def test_collect_archives_finds_supported_archives_and_filters_stems(
@@ -115,12 +117,15 @@ def test_collect_archives_deduplicates_and_sorts_inputs(
 ) -> None:
     archive = sample("Archive.zip")
 
-    assert archive_handling.collect_archives(
-        [str(archive), str(DATA_DIR)], sort_spec="ar"
-    )[0] == sample("Archive.zip").resolve()
-    assert archive_handling.collect_archives(
-        [str(archive), str(archive)]
-    ) == [archive.resolve()]
+    assert (
+        archive_handling.collect_archives(
+            [str(archive), str(DATA_DIR)], sort_spec="ar"
+        )[0]
+        == sample("Archive.zip").resolve()
+    )
+    assert archive_handling.collect_archives([str(archive), str(archive)]) == [
+        archive.resolve()
+    ]
     capsys.readouterr()
 
 
@@ -228,8 +233,11 @@ def test_is_searchable_archive_member(
     compressed: bool,
     expected: bool,
 ) -> None:
-    assert bool(
-        archive_handling.is_searchable_archive_member(
-            member_name, allowed, filename_pattern, compressed
+    assert (
+        bool(
+            archive_handling.is_searchable_archive_member(
+                member_name, allowed, filename_pattern, compressed
+            )
         )
-    ) is expected
+        is expected
+    )
