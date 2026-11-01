@@ -19,7 +19,7 @@ from .archive_handling import (
     show_candidate_id_progress,
     sort_paths,
 )
-from .text_matching import search_file
+from .text_matching import compile_search_pattern, search_file
 
 SUPPORTED_EXTENSIONS = {
     ".txt",
@@ -412,17 +412,17 @@ def _run() -> int:
         parser.error("Match length must be a positive integer")
 
     # Compile both expressions up front so invalid patterns fail before searching.
-    flags = re.IGNORECASE if args.ignore_case else 0
-
     try:
-        pattern = re.compile(args.pattern, flags)
+        pattern = compile_search_pattern(args.pattern, args.ignore_case)
     except re.error as exc:
         parser.error(f"Invalid regular expression: {exc}")
 
     filename_pattern = None
     if args.filename is not None:
         try:
-            filename_pattern = re.compile(args.filename, flags)
+            filename_pattern = re.compile(
+                args.filename, re.IGNORECASE if args.ignore_case else 0
+            )
         except re.error as exc:
             parser.error(f"Invalid filename regular expression: {exc}")
 

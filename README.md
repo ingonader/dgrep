@@ -12,7 +12,7 @@
 
 Files with matches are displayed as `file:///path/to/file.ext` , which in some terminals (like KDE's `konsole`) is rendered as link to open this file with the system's configured editor.
 
-The tool can search a single file or recursively search directories. It shows how many files will be searched and features a progress bar. It shows context around matches, highlights matching text, and optionally searches within supported archive files like `.zip`, `.7z`, and various `.,tar` files. Searches operate on extracted lines: a regular expression is tested against each line independently and does not match across line breaks. File names can also be filtered with a regular expression.
+The tool can search a single file or recursively search directories. It shows how many files will be searched and features a progress bar. It shows context around matches, highlights matching text, and optionally searches within supported archive files like `.zip`, `.7z`, and various `.,tar` files. Searches operate on extracted lines, and the search can span multiple lines when the search expression contains one or more `\n` sequences. In multiline mode, `^` and `$` match the beginning and end of any line; `.` does not match line breaks in either mode. File names can also be filtered with a regular expression.
 
 ## Disclaimer
 
@@ -119,7 +119,7 @@ Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
 
 | Option | Description |
 | --- | --- |
-| `PATTERN` | **Required.** Python regular expression searched for in each extracted line. |
+| `PATTERN` | **Required.** Python regular expression searched in the extracted text. Expressions containing `\n` can match across lines; otherwise each line is searched independently. |
 | `PATH ...` | **Required.** One or more files or directories. Directories are searched recursively. |
 | `-i`, `--ignore-case` | Ignore case in both the content pattern and, if supplied, the file-name pattern. |
 | `-a`, `--include-archives` | Also search supported archive files found at the given paths. Ordinary files are searched first. |

@@ -13,6 +13,23 @@ def test_hyperlink_formats_path_as_terminal_uri(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("expression", "multiline"),
+    [
+        (r"first\nsecond", True),
+        ("first\nsecond", True),
+        (r"literal\\ntext", False),
+        ("single line", False),
+    ],
+)
+def test_compile_search_pattern_selects_multiline_mode(
+    expression: str, multiline: bool
+) -> None:
+    pattern = text_matching.compile_search_pattern(expression)
+
+    assert bool(pattern.flags & re.MULTILINE) is multiline
+
+
+@pytest.mark.parametrize(
     ("ranges", "expected"),
     [
         ([(5, 7), (1, 2), (3, 4), (10, 12)], [(1, 7), (10, 12)]),
@@ -103,6 +120,85 @@ def test_search_file_prints_matches_and_merged_context(
         "---\n"
     )
     assert captured.err == "\r\033[K"
+
+
+def test_search_file_matches_multiple_lines_and_highlights_each_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "fake.txt"
+    monkeypatch.setattr(
+        text_matching,
+        "extract_text",
+        lambda source: ["before", "start", "middle", "end", "after"],
+    )
+
+    count = text_matching.search_file(
+        path,
+        text_matching.compile_search_pattern(r"start\nmiddle\nend"),
+        before=0,
+        after=0,
+        red="<",
+        reset=">",
+    )
+
+    captured = capsys.readouterr()
+    assert count == 3
+    assert captured.out == (
+        f"\r====> {path.resolve().as_uri()} \n"
+        "2: <start>\n"
+        "3: <middle>\n"
+        "4: <end>\n"
+        "---\n"
+    )
+
+
+def test_search_file_multiline_anchors_match_each_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "fake.txt"
+    monkeypatch.setattr(
+        text_matching,
+        "extract_text",
+        lambda source: ["first", "second", "third"],
+    )
+
+    count = text_matching.search_file(
+        path,
+        text_matching.compile_search_pattern(r"^second$\n^third$"),
+        before=0,
+        after=0,
+    )
+
+    captured = capsys.readouterr()
+    assert count == 2
+    assert "2: second\n3: third\n" in captured.out
+
+
+def test_search_file_dot_does_not_match_newline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        text_matching,
+        "extract_text",
+        lambda source: ["first", "second"],
+    )
+
+    assert (
+        text_matching.search_file(
+            tmp_path / "fake.txt",
+            text_matching.compile_search_pattern("first.*second\n"),
+            before=0,
+            after=0,
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == ""
 
 
 def test_search_file_formats_archive_member_link(

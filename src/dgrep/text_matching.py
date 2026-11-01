@@ -1,8 +1,38 @@
 import re
 import sys
+from bisect import bisect_right
 from pathlib import Path
 
 from .text_extraction import extract_text
+
+
+def _contains_newline(pattern: str) -> bool:
+    """Return whether a regex source contains a literal newline or `\\n`."""
+    if "\n" in pattern:
+        return True
+
+    backslash_count = 0
+    for character in pattern:
+        if character == "\\":
+            backslash_count += 1
+            continue
+
+        if character == "n" and backslash_count % 2:
+            return True
+
+        backslash_count = 0
+
+    return False
+
+
+def compile_search_pattern(pattern: str, ignore_case: bool = False) -> re.Pattern:
+    """Compile a search expression with multiline anchors when it spans lines."""
+    flags = re.IGNORECASE if ignore_case else 0
+
+    if _contains_newline(pattern):
+        flags |= re.MULTILINE
+
+    return re.compile(pattern, flags)
 
 
 def hyperlink(path: Path) -> str:
@@ -35,6 +65,7 @@ def truncate_match_line(
     matchlen: int,
     red: str,
     reset: str,
+    match_spans: list[tuple[int, int]] | None = None,
 ) -> str:
     """Build excerpts around every match, merging intersecting excerpts.
 
@@ -48,15 +79,21 @@ def truncate_match_line(
         red: ANSI escape sequence used to begin match highlighting; empty
             disables highlighting.
         reset: ANSI escape sequence that ends highlighting.
+        match_spans: Optional line-local match spans, used for multiline matches.
 
     Returns:
         A concatenation of excerpts, ellipses, and optional ANSI highlights.
     """
     # Center a window on each match, expanding it when the match is longer.
+    spans = (
+        match_spans
+        if match_spans is not None
+        else [(match.start(), match.end()) for match in pattern.finditer(line)]
+    )
     ranges = []
-    for match in pattern.finditer(line):
-        window_length = max(matchlen, match.end() - match.start())
-        center = (match.start() + match.end()) // 2
+    for match_start, match_end in spans:
+        window_length = max(matchlen, match_end - match_start)
+        center = (match_start + match_end) // 2
         start = max(0, center - window_length // 2)
         end = min(len(line), start + window_length)
         start = max(0, end - window_length)
@@ -68,14 +105,13 @@ def truncate_match_line(
         if start > previous_end:
             excerpts.append("...")
 
-        excerpt = line[start:end]
+        excerpt_spans = [
+            (max(match_start, start) - start, min(match_end, end) - start)
+            for match_start, match_end in spans
+            if match_start <= end and match_end >= start
+        ]
         excerpts.append(
-            pattern.sub(
-                lambda match: (
-                    f"{red}{match.group(0)}{reset}" if red else match.group(0)
-                ),
-                excerpt,
-            )
+            highlight_match_spans(line[start:end], excerpt_spans, red, reset)
         )
         previous_end = end
 
@@ -83,6 +119,27 @@ def truncate_match_line(
         excerpts.append("...")
 
     return "".join(excerpts)
+
+
+def highlight_match_spans(
+    line: str,
+    spans: list[tuple[int, int]],
+    red: str,
+    reset: str,
+) -> str:
+    """Return a line with the supplied match spans optionally highlighted."""
+    if not red:
+        return line
+
+    highlighted = []
+    previous_end = 0
+    for start, end in spans:
+        highlighted.append(line[previous_end:start])
+        highlighted.append(f"{red}{line[start:end]}{reset}")
+        previous_end = end
+    highlighted.append(line[previous_end:])
+
+    return "".join(highlighted)
 
 
 def truncate_context_line(line: str, matchlen: int) -> str:
@@ -149,8 +206,41 @@ def search_file(
         )
         return 0
 
-    # Track matching line indexes separately from the merged display ranges.
-    matches = [index for index, line in enumerate(lines) if pattern.search(line)]
+    # Keep line-local spans so multiline matches can be displayed on each line.
+    line_spans: list[list[tuple[int, int]]] = [[] for _ in lines]
+    matched_indexes: set[int] = set()
+
+    if _contains_newline(pattern.pattern) and lines:
+        text = "\n".join(lines)
+        line_starts = []
+        offset = 0
+        for line in lines:
+            line_starts.append(offset)
+            offset += len(line) + 1
+
+        for match in pattern.finditer(text):
+            start_line = bisect_right(line_starts, match.start()) - 1
+            end_line = bisect_right(line_starts, match.end()) - 1
+            for index in range(start_line, end_line + 1):
+                matched_indexes.add(index)
+                line_start = line_starts[index]
+                line_end = line_start + len(lines[index])
+                line_spans[index].append(
+                    (
+                        max(match.start(), line_start) - line_start,
+                        min(match.end(), line_end) - line_start,
+                    )
+                )
+    else:
+        for index, line in enumerate(lines):
+            spans = [
+                (match.start(), match.end()) for match in pattern.finditer(line)
+            ]
+            if spans:
+                matched_indexes.add(index)
+                line_spans[index] = spans
+
+    matches = sorted(matched_indexes)
 
     if not matches:
         return 0
@@ -166,8 +256,6 @@ def search_file(
         ]
     )
 
-    match_set = set(matches)
-
     # Clear the progress display before printing the clickable file URI.
     print("\r\033[K", end="", file=sys.stderr)
     if link_path is not None and display_name is not None:
@@ -181,17 +269,21 @@ def search_file(
             line_number = index + 1
             line = lines[index]
 
-            if index in match_set:
+            if index in matched_indexes:
                 # line contains a match:
                 if matchlen is not None:
-                    line = truncate_match_line(line, pattern, matchlen, red, reset)
+                    line = truncate_match_line(
+                        line,
+                        pattern,
+                        matchlen,
+                        red,
+                        reset,
+                        line_spans[index],
+                    )
                 else:
                     # Highlight every occurrence of the search pattern, if configured.
-                    line = pattern.sub(
-                        lambda match: (
-                            f"{red}{match.group(0)}{reset}" if red else match.group(0)
-                        ),
-                        line,
+                    line = highlight_match_spans(
+                        line, line_spans[index], red, reset
                     )
 
                 print(f"{line_number}: {line}")
