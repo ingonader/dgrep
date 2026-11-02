@@ -231,9 +231,7 @@ def search_file(
                 )
     else:
         for index, line in enumerate(lines):
-            spans = [
-                (match.start(), match.end()) for match in pattern.finditer(line)
-            ]
+            spans = [(match.start(), match.end()) for match in pattern.finditer(line)]
             if spans:
                 matched_indexes.add(index)
                 line_spans[index] = spans
@@ -280,9 +278,7 @@ def search_file(
                     )
                 else:
                     # Highlight every occurrence of the search pattern, if configured.
-                    line = highlight_match_spans(
-                        line, line_spans[index], red, reset
-                    )
+                    line = highlight_match_spans(line, line_spans[index], red, reset)
 
                 print(f"{line_number}: {line}")
             else:
@@ -291,7 +287,8 @@ def search_file(
                     line = truncate_context_line(line, matchlen)
                 print(f"{line_number}- {line}")
 
-    # Separator after all matches and context.
-    print("---")
+        # Separator after each match (only if there is context)
+        if start != end:
+            print("---")
 
     return len(matches)
