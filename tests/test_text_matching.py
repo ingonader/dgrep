@@ -223,9 +223,7 @@ def test_search_file_formats_archive_member_link(
     captured = capsys.readouterr()
     assert count == 1
     assert captured.out == (
-        f"\r====> {path.resolve().as_uri()} !/folder/member.txt\n"
-        "1: fake <match>\n"
-        "---\n"
+        f"\r====> {path.resolve().as_uri()} !/folder/member.txt\n" "1: fake <match>\n"
     )
 
 
