@@ -2,6 +2,26 @@ import sys
 import shutil
 
 
+def configure_colors(mode: str) -> tuple[str, str]:
+    """Choose ANSI color codes based on the requested color mode.
+
+    Args:
+        mode: One of `"always"`, `"never"`, or `"auto"`. Auto mode
+            enables colors only when standard output is connected to a TTY.
+
+    Returns:
+        A pair containing the color-start and reset escape sequences, or two
+        empty strings when color output is disabled.
+    """
+    # Auto mode avoids emitting terminal escapes when output is redirected.
+    use_color = mode == "always" or (mode == "auto" and sys.stdout.isatty())
+
+    if use_color:
+        return "\033[31m", "\033[0m"
+
+    return "", ""
+
+
 def progress_enabled() -> bool:
     return sys.stderr.isatty()
 

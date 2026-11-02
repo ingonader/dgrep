@@ -13,40 +13,21 @@ from .archive_handling import (
     archive_member_names,
     collect_archives,
     copy_archive_member,
-    is_allowed_extension,
     is_searchable_archive_member,
-    show_candidate_id_progress,
-    sort_paths,
 )
-from .output import print_error, progress_enabled, show_search_progress
+from .file_discovery import (
+    SUPPORTED_EXTENSIONS,
+    DEFAULT_EXTENSIONS,
+    get_allowed_extensions,
+    collect_files,
+)
+from .output import (
+    print_error,
+    progress_enabled,
+    show_search_progress,
+    configure_colors,
+)
 from .text_matching import compile_search_pattern, search_file
-
-SUPPORTED_EXTENSIONS = {
-    ".txt",
-    ".md",
-    ".pdf",
-    ".doc",
-    ".docx",
-    ".odt",
-    ".odp",
-    ".ppt",
-    ".pptx",
-    ".xlsx",
-    ".xls",
-    ".ods",
-}
-
-DEFAULT_EXTENSIONS = {
-    ".txt",
-    ".md",
-    ".pdf",
-    ".docx",
-    ".odt",
-    ".odp",
-    ".pptx",
-}
-
-VALID_FORMATS = {extension.lstrip(".") for extension in SUPPORTED_EXTENSIONS}
 
 
 def configure_logging():
@@ -58,63 +39,6 @@ def configure_logging():
     # Keep third-party parser warnings from obscuring search output.
     logging.getLogger("pypdf").setLevel(logging.ERROR)
     warnings.filterwarnings("ignore", module=r"pypdf(\.|$)")
-
-
-def get_allowed_extensions(
-    extension_spec: str | None,
-) -> list[re.Pattern[str]]:
-    """Compile extension patterns, including additive and extensionless forms.
-
-    Args:
-        extension_spec: Comma-separated regular expressions matched against
-            file suffixes. A leading `+` includes the default extensions, and
-            empty entries select files without an extension. `None` selects
-            only the defaults.
-
-    Returns:
-        Compiled regular expressions for matching file suffixes, including the
-        empty suffix when extensionless files are selected.
-    """
-    include_defaults = extension_spec is None or extension_spec.startswith("+")
-    allowed_extensions = (
-        [
-            re.compile(re.escape(extension), re.IGNORECASE)
-            for extension in DEFAULT_EXTENSIONS
-        ]
-        if include_defaults
-        else []
-    )
-
-    if extension_spec is not None:
-        if include_defaults:
-            extension_spec = extension_spec[1:]
-        for extension in extension_spec.split(","):
-            extension = extension.strip()
-            allowed_extensions.append(
-                re.compile(extension if extension else r"^$", re.IGNORECASE)
-            )
-
-    return allowed_extensions
-
-
-def configure_colors(mode: str) -> tuple[str, str]:
-    """Choose ANSI color codes based on the requested color mode.
-
-    Args:
-        mode: One of `"always"`, `"never"`, or `"auto"`. Auto mode
-            enables colors only when standard output is connected to a TTY.
-
-    Returns:
-        A pair containing the color-start and reset escape sequences, or two
-        empty strings when color output is disabled.
-    """
-    # Auto mode avoids emitting terminal escapes when output is redirected.
-    use_color = mode == "always" or (mode == "auto" and sys.stdout.isatty())
-
-    if use_color:
-        return "\033[31m", "\033[0m"
-
-    return "", ""
 
 
 def parse_sort_spec(value: str) -> str:
@@ -153,70 +77,6 @@ def parse_sort_spec(value: str) -> str:
         )
 
     return value
-
-
-def collect_files(
-    inputs: list[str],
-    formats: str | None = None,
-    filename_pattern: re.Pattern[str] | None = None,
-    sort_spec: str = "a",
-) -> list[Path]:
-    """Find unique files matching extension and optional filename filters.
-
-    Directories are searched recursively. Nonexistent paths are reported to
-    standard error and skipped.
-
-    Args:
-        inputs: File and directory paths to search.
-        formats: Comma-separated extension regular expressions. A leading `+`
-            adds to the default extensions, and empty entries select files
-            without an extension. `None` selects the default extensions.
-        filename_pattern: Optional regular expression matched against each
-            filename stem.
-        sort_spec: Sort key (`a`, `c`, `t`, or `u`) and optional reverse flag
-            (`r`).
-
-    Returns:
-        Resolved matching file paths in the requested order.
-    """
-
-    allowed_extensions = get_allowed_extensions(formats)
-
-    files = set()
-
-    for item in inputs:
-        path = Path(item).expanduser()
-
-        if not path.exists():
-            print_error(f"Warning: not found: {item}")
-            continue
-
-        if path.is_file():
-            if is_allowed_extension(path.suffix, allowed_extensions) and (
-                filename_pattern is None or filename_pattern.search(path.stem)
-            ):
-                files.add(path.resolve())
-                file_cnt = len(files)
-                show_candidate_id_progress(file_cnt, "files")
-            continue
-
-        if path.is_dir():
-            for candidate in path.rglob("*"):
-                if (
-                    candidate.is_file()
-                    and is_allowed_extension(candidate.suffix, allowed_extensions)
-                    and (
-                        filename_pattern is None
-                        or filename_pattern.search(candidate.stem)
-                    )
-                ):
-                    files.add(candidate.resolve())
-                    file_cnt = len(files)
-                    show_candidate_id_progress(file_cnt, "files")
-
-    if progress_enabled():
-        print("\r\033[K", end="", file=sys.stderr)
-    return sort_paths(files, sort_spec)
 
 
 class DgrepArgumentParser(argparse.ArgumentParser):
