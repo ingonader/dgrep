@@ -5,7 +5,6 @@ import re
 import sys
 from pathlib import Path
 import tempfile
-import shutil
 
 import logging
 import warnings
@@ -19,7 +18,7 @@ from .archive_handling import (
     show_candidate_id_progress,
     sort_paths,
 )
-from .output import print_error, progress_enabled
+from .output import print_error, progress_enabled, show_search_progress
 from .text_matching import compile_search_pattern, search_file
 
 SUPPORTED_EXTENSIONS = {
@@ -218,47 +217,6 @@ def collect_files(
     if progress_enabled():
         print("\r\033[K", end="", file=sys.stderr)
     return sort_paths(files, sort_spec)
-
-
-def show_search_progress(
-    current: int,
-    total: int,
-    filename: str,
-    bar_width: int = 20,
-    label: str = "",
-) -> None:
-    """Write a single-line progress indicator to standard error.
-
-    Args:
-        current: Number of completed items.
-        total: Total number of items; zero displays a zero-percent bar.
-        filename: Current filename or status text shown beside the bar.
-        bar_width: Number of characters used for the progress bar.
-        label: Optional prefix distinguishing progress categories.
-    """
-    filename = str(filename)
-    terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
-
-    # Clamp available filename space to avoid negative padding on narrow terminals.
-    fraction = current / total if total else 0
-    filled = int(bar_width * fraction)
-    bar = "#" * filled + "." * (bar_width - filled)
-
-    prefix = f"\r{label}[{bar}] {fraction:6.1%} "
-    available = max(0, terminal_width - len(prefix) - 1)
-
-    # Truncate long filenames.
-    if len(filename) > available:
-        filename = (
-            "..." + filename[-(available - 3) :]
-            if available > 3
-            else filename[:available]
-        )
-
-    message = prefix + filename
-
-    if progress_enabled():
-        print(message.ljust(terminal_width - 1), end="", file=sys.stderr, flush=True)
 
 
 class DgrepArgumentParser(argparse.ArgumentParser):
