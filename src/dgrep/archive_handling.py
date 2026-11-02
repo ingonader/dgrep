@@ -10,6 +10,8 @@ import zipfile
 from pathlib import Path
 from typing import BinaryIO
 
+from .output import progress_enabled
+
 ARCHIVE_SUFFIXES = (
     ".tar.gz",
     ".tar.bz2",
@@ -28,6 +30,8 @@ ARCHIVE_SUFFIXES = (
 
 
 def show_candidate_id_progress(cnt: int, candidate_name: str) -> None:
+    if not progress_enabled():
+        return
     msg = f"Searching candidates: Found {str(cnt)} {candidate_name}..."
     print(f"\r{msg}", end="", file=sys.stderr, flush=True)
 
@@ -133,8 +137,8 @@ def collect_archives(
                 archive_cnt = len(archives)
                 show_candidate_id_progress(archive_cnt, "archives")
 
-    # Clear the progress display:
-    print("\r\033[K", end="", file=sys.stderr)
+    if progress_enabled():
+        print("\r\033[K", end="", file=sys.stderr)
     return sort_paths(archives, sort_spec)
 
 

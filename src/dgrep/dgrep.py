@@ -19,6 +19,7 @@ from .archive_handling import (
     show_candidate_id_progress,
     sort_paths,
 )
+from .output import print_error, progress_enabled
 from .text_matching import compile_search_pattern, search_file
 
 SUPPORTED_EXTENSIONS = {
@@ -188,10 +189,7 @@ def collect_files(
         path = Path(item).expanduser()
 
         if not path.exists():
-            print(
-                f"Warning: not found: {item}",
-                file=sys.stderr,
-            )
+            print_error(f"Warning: not found: {item}")
             continue
 
         if path.is_file():
@@ -217,8 +215,8 @@ def collect_files(
                     file_cnt = len(files)
                     show_candidate_id_progress(file_cnt, "files")
 
-    # Clear the progress display:
-    print("\r\033[K", end="", file=sys.stderr)
+    if progress_enabled():
+        print("\r\033[K", end="", file=sys.stderr)
     return sort_paths(files, sort_spec)
 
 
@@ -259,7 +257,15 @@ def show_search_progress(
 
     message = prefix + filename
 
-    print(message.ljust(terminal_width - 1), end="", file=sys.stderr, flush=True)
+    if progress_enabled():
+        print(message.ljust(terminal_width - 1), end="", file=sys.stderr, flush=True)
+
+
+class DgrepArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        print_error(self.format_usage().rstrip("\n"))
+        print_error(f"{self.prog}: error: {message}")
+        self.exit(2)
 
 
 def _run() -> int:
@@ -278,7 +284,7 @@ def _run() -> int:
     """
     configure_logging()
 
-    parser = argparse.ArgumentParser(
+    parser = DgrepArgumentParser(
         description=(
             "Search "
             + ", ".join([i[1:] for i in SUPPORTED_EXTENSIONS])
@@ -442,7 +448,7 @@ def _run() -> int:
     )
 
     if not files and not archives:
-        print("No supported files found.", file=sys.stderr)
+        print_error("No supported files found.")
         return 1
 
     # Filter archive members with the same extension policy used for normal files.
@@ -451,10 +457,7 @@ def _run() -> int:
         try:
             archive_type, member_names = archive_member_names(archive_path)
         except Exception as exc:
-            print(
-                f"\nWarning: cannot read archive {archive_path}: {exc}",
-                file=sys.stderr,
-            )
+            print_error(f"\nWarning: cannot read archive {archive_path}: {exc}")
             continue
 
         compressed_stream = archive_type == "compressed"
@@ -511,14 +514,17 @@ def _run() -> int:
         )
 
     # Print newline on stderr for correct printing afterwards.
-    print(file=sys.stderr)
+    if progress_enabled():
+        print(file=sys.stderr)
 
     if args.include_archives:
         if files:
-            print(file=sys.stderr)
+            if progress_enabled():
+                print(file=sys.stderr)
         else:
             show_search_progress(0, 0, "No ordinary files", label="Files ")
-            print(file=sys.stderr)
+            if progress_enabled():
+                print(file=sys.stderr)
         print(f"Searching {len(archive_members)} files in archives...")
 
         # Extract each selected member to a temporary file before reusing search_file.
@@ -550,10 +556,7 @@ def _run() -> int:
                             link_path=archive_path,
                         )
                     except Exception as exc:
-                        print(
-                            f"\nWarning: cannot read {display_name}: {exc}",
-                            file=sys.stderr,
-                        )
+                        print_error(f"\nWarning: cannot read {display_name}: {exc}")
 
                     show_search_progress(
                         index,
@@ -566,7 +569,8 @@ def _run() -> int:
             show_search_progress(0, 0, "No matching archive members", label="Archives ")
 
         # Print newline on stderr for correct printing afterwards.
-        print(file=sys.stderr)
+        if progress_enabled():
+            print(file=sys.stderr)
 
     # Print summary of searched files.
     if args.include_archives:
@@ -584,7 +588,7 @@ def main() -> int:
     try:
         return _run()
     except KeyboardInterrupt:
-        print("Interrupted by user", file=sys.stderr)
+        print_error("Interrupted by user")
         return 130
 
 

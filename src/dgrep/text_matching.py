@@ -3,6 +3,7 @@ import sys
 from bisect import bisect_right
 from pathlib import Path
 
+from .output import print_error, progress_enabled
 from .text_extraction import extract_text
 
 
@@ -200,10 +201,7 @@ def search_file(
             if link_path is not None and display_name is not None
             else display_name or path
         )
-        print(
-            f"Warning: cannot read {source_name}: {exc}",
-            file=sys.stderr,
-        )
+        print_error(f"Warning: cannot read {source_name}: {exc}")
         return 0
 
     # Keep line-local spans so multiline matches can be displayed on each line.
@@ -256,8 +254,8 @@ def search_file(
         ]
     )
 
-    # Clear the progress display before printing the clickable file URI.
-    print("\r\033[K", end="", file=sys.stderr)
+    if progress_enabled():
+        print("\r\033[K", end="", file=sys.stderr)
     if link_path is not None and display_name is not None:
         output_name = f"!/{display_name}"
     else:

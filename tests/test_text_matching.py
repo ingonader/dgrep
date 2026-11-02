@@ -119,7 +119,7 @@ def test_search_file_prints_matches_and_merged_context(
         "5- after\n"
         "---\n"
     )
-    assert captured.err == "\r\033[K"
+    assert captured.err == ""
 
 
 def test_search_file_matches_multiple_lines_and_highlights_each_line(

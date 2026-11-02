@@ -40,7 +40,8 @@ def test_archive_suffix(filename: str, expected: str | None) -> None:
 def test_show_candidate_id_progress(capsys: pytest.CaptureFixture[str]) -> None:
     archive_handling.show_candidate_id_progress(3, "archives")
 
-    assert capsys.readouterr().err == "\rSearching candidates: Found 3 archives..."
+    captured = capsys.readouterr()
+    assert captured.err == ""
 
 
 @pytest.mark.parametrize(
@@ -109,7 +110,7 @@ def test_collect_archives_finds_supported_archives_and_filters_stems(
         "Archive.zip",
     }
     assert all(path.is_absolute() for path in archives)
-    assert capsys.readouterr().err.endswith("\r\033[K")
+    assert capsys.readouterr().err == ""
 
 
 def test_collect_archives_deduplicates_and_sorts_inputs(
