@@ -83,7 +83,7 @@ These system programs are only needed when searching those formats. PDF, DOCX, P
 ## Usage
 
 ```text
-dgrep [OPTIONS] PATTERN PATH [PATH ...]
+dgrep [OPTIONS] PATTERN [PATH ...]
 ```
 
 For example, search the default document types under a directory:
@@ -126,7 +126,7 @@ Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
 | Option | Description |
 | --- | --- |
 | `PATTERN` | **Required.** Python regular expression searched in the extracted text. Expressions containing `\n` can match across lines; otherwise each line is searched independently. |
-| `PATH ...` | **Required.** One or more files or directories. Directories are searched recursively. |
+| `PATH ...` | Optional. One or more files or directories. Directories are searched recursively. Defaults to the current directory (`.`). |
 | `-i`, `--ignore-case` | Ignore case in the content pattern, file-name pattern, and directory-exclusion patterns. |
 | `-a`, `--include-archives` | Also search supported archive files found at the given paths. Ordinary files are searched first. |
 | `-B N`, `--before-context N` | Print up to `N` lines before each matching line. Default: `0`. |

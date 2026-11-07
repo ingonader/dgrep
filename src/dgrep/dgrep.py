@@ -119,8 +119,9 @@ def _run() -> int:
 
     parser.add_argument(
         "paths",
-        nargs="+",
-        help="Files or directories to search",
+        nargs="*",
+        default=["."],
+        help="Files or directories to search (default: current directory)",
     )
 
     parser.add_argument(

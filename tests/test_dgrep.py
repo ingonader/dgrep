@@ -169,6 +169,25 @@ def test_run_returns_failure_when_no_supported_files_are_found(
     assert capsys.readouterr().err == "No supported files found.\n"
 
 
+def test_run_defaults_paths_to_current_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _prepare_cli(monkeypatch, "needle")
+    collected_paths: list[str] = []
+
+    def collect_files(paths: list[str], *args: object) -> list[Path]:
+        collected_paths.extend(paths)
+        return []
+
+    monkeypatch.setattr(dgrep, "collect_files", collect_files)
+
+    assert dgrep._run() == 1
+
+    assert collected_paths == ["."]
+    assert capsys.readouterr().err == "No supported files found.\n"
+
+
 def test_run_reports_only_paths_actually_excluded(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
