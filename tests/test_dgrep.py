@@ -187,10 +187,10 @@ def test_run_reports_only_paths_actually_excluded(
     assert dgrep._run() == 0
 
     captured = capsys.readouterr()
-    assert "Excluded 1 matching paths:" in captured.err
-    assert "custom" in captured.err
-    assert "nested" not in captured.err
-    assert "excluded.md" not in captured.err
+    assert "Excluded 1 matching paths:" in captured.out
+    assert "custom" in captured.out
+    assert "nested" not in captured.out
+    assert "excluded.md" not in captured.out
 
 
 def test_run_searches_matching_archive_members(

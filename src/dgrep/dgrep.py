@@ -212,7 +212,7 @@ def _run() -> int:
             + "Defaults: '"
             + DEFAULT_EXCLUDE_DIRS_SPEC
             + "'. Paths excluded during discovery are summarized on standard "
-            + "error."
+            + "output."
         ),
     )
 
@@ -335,7 +335,7 @@ def _run() -> int:
 
     if excluded_paths:
         paths = ", ".join(sorted(excluded_paths))
-        print_error(f"Excluded {len(excluded_paths)} matching paths: {paths}")
+        print(f"Excluded {len(excluded_paths)} matching paths: {paths}")
 
     if not files and not archives:
         print_error("No supported files found.")
