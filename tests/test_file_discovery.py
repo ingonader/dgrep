@@ -130,13 +130,17 @@ def test_collect_files_excludes_matching_directories_and_prunes_them(
     monkeypatch.setattr(file_discovery.os, "walk", tracking_walk)
     monkeypatch.setattr(file_discovery, "progress_enabled", lambda: False)
 
+    excluded_paths: set[str] = set()
     found = file_discovery.collect_files(
         [str(tmp_path)],
         exclude_patterns=[re.compile(r"/renv/library/")],
+        excluded_paths=excluded_paths,
     )
 
     assert found == [included.resolve()]
     assert excluded.parent not in visited
+    assert len(excluded_paths) == 1
+    assert next(iter(excluded_paths)).endswith("renv/library")
 
 
 def test_collect_files_excludes_a_matching_search_root(

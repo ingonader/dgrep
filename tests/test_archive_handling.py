@@ -150,13 +150,16 @@ def test_collect_archives_excludes_matching_directories_and_prunes_them(
     monkeypatch.setattr(archive_handling.os, "walk", tracking_walk)
     monkeypatch.setattr(archive_handling, "progress_enabled", lambda: False)
 
+    excluded_paths: set[str] = set()
     found = archive_handling.collect_archives(
         [str(tmp_path)],
         exclude_patterns=[re.compile(r"/node_modules/")],
+        excluded_paths=excluded_paths,
     )
 
     assert found == [included.resolve()]
     assert excluded.parent.parent not in visited
+    assert next(iter(excluded_paths)).endswith("node_modules")
 
 
 @pytest.mark.parametrize(
@@ -293,3 +296,18 @@ def test_is_searchable_archive_member_excludes_directories(
         None,
         exclude_patterns=exclude_patterns,
     ) is expected
+
+
+def test_is_searchable_archive_member_records_excluded_directory() -> None:
+    excluded_paths: set[str] = set()
+
+    assert not archive_handling.is_searchable_archive_member(
+        "renv/library/moby-dick.md",
+        [re.compile(r"\.md")],
+        None,
+        exclude_patterns=[re.compile(r"/renv/library/")],
+        excluded_paths=excluded_paths,
+        archive_path=Path("Archive.zip"),
+    )
+
+    assert excluded_paths == {"Archive.zip!/renv/library"}

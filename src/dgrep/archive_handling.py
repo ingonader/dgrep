@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterator
 
 from .output import progress_enabled
-from .regex_utils import is_excluded_directory_path
+from .regex_utils import find_excluded_directory_path
 
 ARCHIVE_SUFFIXES = (
     ".tar.gz",
@@ -97,6 +97,7 @@ def archive_suffix(filename: str) -> str | None:
 def _iter_archive_candidates(
     path: Path,
     exclude_patterns: list[re.Pattern[str]],
+    excluded_paths: set[str] | None = None,
 ) -> Iterator[Path]:
     """Yield files at a path or recursively beneath a directory.
 
@@ -107,31 +108,52 @@ def _iter_archive_candidates(
         path: File or directory to search.
         exclude_patterns: Compiled expressions matched against relative
             directory paths.
+        excluded_paths: Optional set populated with paths excluded by these
+            directory patterns.
 
     Yields:
         Candidate file paths that are not inside excluded directories.
     """
     if path.is_file():
         relative_path = Path(os.path.relpath(path.absolute(), Path.cwd()))
-        if not is_excluded_directory_path(relative_path.parent, exclude_patterns):
+        excluded_directory = find_excluded_directory_path(
+            relative_path.parent, exclude_patterns
+        )
+        if excluded_directory is None:
             yield path
+        elif excluded_paths is not None:
+            excluded_paths.add(str(excluded_directory))
         return
 
     if not path.is_dir():
         return
 
     search_root = path.absolute()
-    if is_excluded_directory_path(path.name, exclude_patterns):
+    if find_excluded_directory_path(path.name, exclude_patterns) is not None:
+        if excluded_paths is not None:
+            excluded_paths.add(
+                str(Path(os.path.relpath(search_root, Path.cwd())))
+            )
         return
 
     for current_root, dirnames, filenames in os.walk(search_root):
         current_path = Path(current_root)
         relative_root = current_path.relative_to(search_root)
-        dirnames[:] = [
-            dirname
-            for dirname in dirnames
-            if not is_excluded_directory_path(relative_root / dirname, exclude_patterns)
-        ]
+        kept_dirnames = []
+        for dirname in dirnames:
+            excluded_directory = find_excluded_directory_path(
+                relative_root / dirname, exclude_patterns
+            )
+            if excluded_directory is None:
+                kept_dirnames.append(dirname)
+            elif excluded_paths is not None:
+                excluded_paths.add(
+                    str(
+                        Path(os.path.relpath(search_root, Path.cwd()))
+                        / Path(str(excluded_directory))
+                    )
+                )
+        dirnames[:] = kept_dirnames
         for filename in filenames:
             yield current_path / filename
 
@@ -141,6 +163,7 @@ def collect_archives(
     filename_pattern: re.Pattern[str] | None = None,
     sort_spec: str = "a",
     exclude_patterns: list[re.Pattern[str]] | None = None,
+    excluded_paths: set[str] | None = None,
 ) -> list[Path]:
     """Find supported archives at the given paths, independently of documents.
 
@@ -155,6 +178,8 @@ def collect_archives(
             (`r`).
         exclude_patterns: Optional expressions matched against relative
             directory paths before they are traversed.
+        excluded_paths: Optional set populated with paths excluded by these
+            directory patterns.
 
     Returns:
         Resolved matching archive paths in the requested order.
@@ -171,7 +196,9 @@ def collect_archives(
         if not path.exists():
             continue
 
-        for candidate in _iter_archive_candidates(path, exclude_patterns):
+        for candidate in _iter_archive_candidates(
+            path, exclude_patterns, excluded_paths
+        ):
             suffix = archive_suffix(candidate.name)
             if not candidate.is_file() or suffix is None:
                 continue
@@ -317,6 +344,8 @@ def is_searchable_archive_member(
     filename_pattern: re.Pattern[str] | None,
     compressed_stream: bool = False,
     exclude_patterns: list[re.Pattern[str]] | None = None,
+    excluded_paths: set[str] | None = None,
+    archive_path: Path | None = None,
 ) -> bool:
     """Check whether an archive member passes its search filters.
 
@@ -331,6 +360,10 @@ def is_searchable_archive_member(
             stream without a stored filename.
         exclude_patterns: Optional expressions matched against relative
             directory paths within the archive.
+        excluded_paths: Optional set populated with excluded archive-member
+            directories, qualified by their archive path.
+        archive_path: Archive containing the member, used to qualify reported
+            excluded directories.
 
     Returns:
         `True` when the member should be searched.
@@ -342,8 +375,20 @@ def is_searchable_archive_member(
     if not suffix and compressed_stream:
         suffix = ".txt"
 
+    excluded_directory = find_excluded_directory_path(
+        member_path.parent, exclude_patterns or []
+    )
+    if excluded_directory is not None and excluded_paths is not None:
+        excluded_path = str(excluded_directory)
+        if archive_path is not None:
+            relative_archive = Path(
+                os.path.relpath(archive_path.absolute(), Path.cwd())
+            )
+            excluded_path = f"{relative_archive}!/{excluded_path}"
+        excluded_paths.add(excluded_path)
+
     return (
-        not is_excluded_directory_path(member_path.parent, exclude_patterns or [])
+        excluded_directory is None
         and is_allowed_extension(suffix, allowed_extensions)
         and (filename_pattern is None or filename_pattern.search(member_path.stem))
     )

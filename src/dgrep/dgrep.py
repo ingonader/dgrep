@@ -211,7 +211,8 @@ def _run() -> int:
             + "the defaults. "
             + "Defaults: '"
             + DEFAULT_EXCLUDE_DIRS_SPEC
-            + "'"
+            + "'. Paths excluded during discovery are summarized on standard "
+            + "error."
         ),
     )
 
@@ -283,21 +284,30 @@ def _run() -> int:
     except re.error as exc:
         parser.error(f"Invalid directory exclusion regular expression: {exc}")
 
+    excluded_paths: set[str] = set()
+
     # Discover ordinary files and archives separately because their contents
     # require different extraction paths.
     files = collect_files(
-        args.paths, args.ext, filename_pattern, args.sort, exclude_patterns
+        args.paths,
+        args.ext,
+        filename_pattern,
+        args.sort,
+        exclude_patterns,
+        excluded_paths,
     )
     files_unique_extensions = {path.suffix for path in files}
     archives = (
-        collect_archives(args.paths, filename_pattern, args.sort, exclude_patterns)
+        collect_archives(
+            args.paths,
+            filename_pattern,
+            args.sort,
+            exclude_patterns,
+            excluded_paths,
+        )
         if args.include_archives
         else []
     )
-
-    if not files and not archives:
-        print_error("No supported files found.")
-        return 1
 
     # Filter archive members with the same extension policy used for normal files.
     archive_members = []
@@ -318,8 +328,18 @@ def _run() -> int:
                 filename_pattern,
                 compressed_stream,
                 exclude_patterns,
+                excluded_paths,
+                archive_path,
             )
         )
+
+    if excluded_paths:
+        paths = ", ".join(sorted(excluded_paths))
+        print_error(f"Excluded {len(excluded_paths)} matching paths: {paths}")
+
+    if not files and not archives:
+        print_error("No supported files found.")
+        return 1
 
     # get filenames from archives, and their extentions:
     archive_members_filenames = [Path(i[2]) for i in archive_members]

@@ -86,6 +86,7 @@ def test_run_searches_ordinary_files_with_parsed_options(
         filename_pattern: re.Pattern[str] | None,
         sort_spec: str,
         exclude_patterns: list[re.Pattern[str]],
+        excluded_paths: set[str],
     ) -> list[Path]:
         collection.update(
             paths=paths,
@@ -93,6 +94,7 @@ def test_run_searches_ordinary_files_with_parsed_options(
             filename_pattern=filename_pattern,
             sort_spec=sort_spec,
             exclude_patterns=exclude_patterns,
+            excluded_paths=excluded_paths,
         )
         return [first, second]
 
@@ -165,6 +167,30 @@ def test_run_returns_failure_when_no_supported_files_are_found(
 
     assert dgrep._run() == 1
     assert capsys.readouterr().err == "No supported files found.\n"
+
+
+def test_run_reports_only_paths_actually_excluded(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    included = tmp_path / "included.md"
+    excluded = tmp_path / "custom" / "nested" / "excluded.md"
+    excluded.parent.mkdir(parents=True)
+    included.write_text("needle\n")
+    excluded.write_text("needle\n")
+    _prepare_cli(
+        monkeypatch, "needle", str(tmp_path), "--exclude", "+custom"
+    )
+    monkeypatch.setattr(dgrep, "search_file", lambda *args, **kwargs: 1)
+
+    assert dgrep._run() == 0
+
+    captured = capsys.readouterr()
+    assert "Excluded 1 matching paths:" in captured.err
+    assert "custom" in captured.err
+    assert "nested" not in captured.err
+    assert "excluded.md" not in captured.err
 
 
 def test_run_searches_matching_archive_members(
