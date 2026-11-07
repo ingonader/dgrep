@@ -1,16 +1,18 @@
 import bz2
 import gzip
 import lzma
+import os
 import re
 import shutil
 import sys
 import tarfile
 import tempfile
 import zipfile
-from pathlib import Path
-from typing import BinaryIO
+from pathlib import Path, PurePosixPath
+from typing import BinaryIO, Iterator
 
 from .output import progress_enabled
+from .regex_utils import is_excluded_directory_path
 
 ARCHIVE_SUFFIXES = (
     ".tar.gz",
@@ -92,10 +94,53 @@ def archive_suffix(filename: str) -> str | None:
     )
 
 
+def _iter_archive_candidates(
+    path: Path,
+    exclude_patterns: list[re.Pattern[str]],
+) -> Iterator[Path]:
+    """Yield files at a path or recursively beneath a directory.
+
+    Excluded directories are skipped, and their subdirectories are not
+    traversed. Paths that are neither files nor directories yield nothing.
+
+    Args:
+        path: File or directory to search.
+        exclude_patterns: Compiled expressions matched against relative
+            directory paths.
+
+    Yields:
+        Candidate file paths that are not inside excluded directories.
+    """
+    if path.is_file():
+        relative_path = Path(os.path.relpath(path.absolute(), Path.cwd()))
+        if not is_excluded_directory_path(relative_path.parent, exclude_patterns):
+            yield path
+        return
+
+    if not path.is_dir():
+        return
+
+    search_root = path.absolute()
+    if is_excluded_directory_path(path.name, exclude_patterns):
+        return
+
+    for current_root, dirnames, filenames in os.walk(search_root):
+        current_path = Path(current_root)
+        relative_root = current_path.relative_to(search_root)
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if not is_excluded_directory_path(relative_root / dirname, exclude_patterns)
+        ]
+        for filename in filenames:
+            yield current_path / filename
+
+
 def collect_archives(
     inputs: list[str],
     filename_pattern: re.Pattern[str] | None = None,
     sort_spec: str = "a",
+    exclude_patterns: list[re.Pattern[str]] | None = None,
 ) -> list[Path]:
     """Find supported archives at the given paths, independently of documents.
 
@@ -108,12 +153,15 @@ def collect_archives(
             filename stems.
         sort_spec: Sort key (`a`, `c`, `t`, or `u`) and optional reverse flag
             (`r`).
+        exclude_patterns: Optional expressions matched against relative
+            directory paths before they are traversed.
 
     Returns:
         Resolved matching archive paths in the requested order.
     """
     # Deduplicate overlapping input paths before returning stable output.
     archives = set()
+    exclude_patterns = exclude_patterns or []
     archive_cnt = 0
     show_candidate_id_progress(archive_cnt, "archives")
 
@@ -123,10 +171,7 @@ def collect_archives(
         if not path.exists():
             continue
 
-        candidates = (
-            [path] if path.is_file() else path.rglob("*") if path.is_dir() else []
-        )
-        for candidate in candidates:
+        for candidate in _iter_archive_candidates(path, exclude_patterns):
             suffix = archive_suffix(candidate.name)
             if not candidate.is_file() or suffix is None:
                 continue
@@ -271,8 +316,9 @@ def is_searchable_archive_member(
     allowed_extensions: list[re.Pattern[str]],
     filename_pattern: re.Pattern[str] | None,
     compressed_stream: bool = False,
+    exclude_patterns: list[re.Pattern[str]] | None = None,
 ) -> bool:
-    """Check whether an archive member passes extension and filename filters.
+    """Check whether an archive member passes its search filters.
 
     A compressed stream has no internal filename, so it is treated as a text
     file for extension filtering.
@@ -283,17 +329,21 @@ def is_searchable_archive_member(
         filename_pattern: Optional regular expression applied to the member stem.
         compressed_stream: Whether the member represents a single compressed
             stream without a stored filename.
+        exclude_patterns: Optional expressions matched against relative
+            directory paths within the archive.
 
     Returns:
         `True` when the member should be searched.
     """
     # Compressed streams inherit a text extension because their inner name is absent.
-    member_path = Path(member_name)
+    member_path = PurePosixPath(member_name.replace("\\", "/"))
     suffix = member_path.suffix.lower()
 
     if not suffix and compressed_stream:
         suffix = ".txt"
 
-    return is_allowed_extension(suffix, allowed_extensions) and (
-        filename_pattern is None or filename_pattern.search(member_path.stem)
+    return (
+        not is_excluded_directory_path(member_path.parent, exclude_patterns or [])
+        and is_allowed_extension(suffix, allowed_extensions)
+        and (filename_pattern is None or filename_pattern.search(member_path.stem))
     )

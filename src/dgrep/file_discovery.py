@@ -1,7 +1,15 @@
-import sys
+import os
 import re
+import sys
 from pathlib import Path
+
 from .output import print_error, progress_enabled
+from .regex_utils import compile_regex_list, is_excluded_directory_path
+from .archive_handling import (
+    is_allowed_extension,
+    show_candidate_id_progress,
+    sort_paths,
+)
 
 SUPPORTED_EXTENSIONS = {
     ".txt",
@@ -29,13 +37,6 @@ DEFAULT_EXTENSIONS = {
 }
 
 VALID_FORMATS = {extension.lstrip(".") for extension in SUPPORTED_EXTENSIONS}
-
-
-from .archive_handling import (
-    is_allowed_extension,
-    show_candidate_id_progress,
-    sort_paths,
-)
 
 
 def get_allowed_extensions(
@@ -66,11 +67,13 @@ def get_allowed_extensions(
     if extension_spec is not None:
         if include_defaults:
             extension_spec = extension_spec[1:]
-        for extension in extension_spec.split(","):
-            extension = extension.strip()
-            allowed_extensions.append(
-                re.compile(extension if extension else r"^$", re.IGNORECASE)
+        allowed_extensions.extend(
+            compile_regex_list(
+                extension_spec,
+                re.IGNORECASE,
+                empty_pattern=r"^$",
             )
+        )
 
     return allowed_extensions
 
@@ -80,8 +83,9 @@ def collect_files(
     formats: str | None = None,
     filename_pattern: re.Pattern[str] | None = None,
     sort_spec: str = "a",
+    exclude_patterns: list[re.Pattern[str]] | None = None,
 ) -> list[Path]:
-    """Find unique files matching extension and optional filename filters.
+    """Find unique files matching extension, name, and directory filters.
 
     Directories are searched recursively. Nonexistent paths are reported to
     standard error and skipped.
@@ -95,12 +99,15 @@ def collect_files(
             filename stem.
         sort_spec: Sort key (`a`, `c`, `t`, or `u`) and optional reverse flag
             (`r`).
+        exclude_patterns: Optional expressions matched against relative
+            directory paths before they are traversed.
 
     Returns:
         Resolved matching file paths in the requested order.
     """
 
     allowed_extensions = get_allowed_extensions(formats)
+    exclude_patterns = exclude_patterns or []
 
     files = set()
 
@@ -112,8 +119,16 @@ def collect_files(
             continue
 
         if path.is_file():
-            if is_allowed_extension(path.suffix, allowed_extensions) and (
-                filename_pattern is None or filename_pattern.search(path.stem)
+            relative_path = Path(os.path.relpath(path.absolute(), Path.cwd()))
+            if (
+                not is_excluded_directory_path(
+                    relative_path.parent, exclude_patterns
+                )
+                and is_allowed_extension(path.suffix, allowed_extensions)
+                and (
+                    filename_pattern is None
+                    or filename_pattern.search(path.stem)
+                )
             ):
                 files.add(path.resolve())
                 file_cnt = len(files)
@@ -121,18 +136,33 @@ def collect_files(
             continue
 
         if path.is_dir():
-            for candidate in path.rglob("*"):
-                if (
-                    candidate.is_file()
-                    and is_allowed_extension(candidate.suffix, allowed_extensions)
-                    and (
-                        filename_pattern is None
-                        or filename_pattern.search(candidate.stem)
-                    )
-                ):
-                    files.add(candidate.resolve())
-                    file_cnt = len(files)
-                    show_candidate_id_progress(file_cnt, "files")
+            search_root = path.absolute()
+            if not is_excluded_directory_path(path.name, exclude_patterns):
+                for current_root, dirnames, filenames in os.walk(search_root):
+                    current_path = Path(current_root)
+                    relative_root = current_path.relative_to(search_root)
+                    dirnames[:] = [
+                        dirname
+                        for dirname in dirnames
+                        if not is_excluded_directory_path(
+                            relative_root / dirname, exclude_patterns
+                        )
+                    ]
+                    for filename in filenames:
+                        candidate = current_path / filename
+                        if (
+                            candidate.is_file()
+                            and is_allowed_extension(
+                                candidate.suffix, allowed_extensions
+                            )
+                            and (
+                                filename_pattern is None
+                                or filename_pattern.search(candidate.stem)
+                            )
+                        ):
+                            files.add(candidate.resolve())
+                            file_cnt = len(files)
+                            show_candidate_id_progress(file_cnt, "files")
 
     if progress_enabled():
         print("\r\033[K", end="", file=sys.stderr)

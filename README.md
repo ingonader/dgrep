@@ -105,6 +105,12 @@ and filter file names by a regular expression:
 uvx dgrep -e 'py|js' -f 'test|example' 'TODO|FIXME' ./project
 ```
 
+Exclude dependency and generated-file directories while searching:
+
+```bash
+uvx dgrep -x 'renv,venv' 'TODO|FIXME' ./project
+```
+
 Enable archive searching with `-a`:
 
 ```bash
@@ -121,7 +127,7 @@ Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
 | --- | --- |
 | `PATTERN` | **Required.** Python regular expression searched in the extracted text. Expressions containing `\n` can match across lines; otherwise each line is searched independently. |
 | `PATH ...` | **Required.** One or more files or directories. Directories are searched recursively. |
-| `-i`, `--ignore-case` | Ignore case in both the content pattern and, if supplied, the file-name pattern. |
+| `-i`, `--ignore-case` | Ignore case in the content pattern, file-name pattern, and directory-exclusion patterns. |
 | `-a`, `--include-archives` | Also search supported archive files found at the given paths. Ordinary files are searched first. |
 | `-B N`, `--before-context N` | Print up to `N` lines before each matching line. Default: `0`. |
 | `-A N`, `--after-context N` | Print up to `N` lines after each matching line. Default: `0`. |
@@ -129,6 +135,7 @@ Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
 | `-l CHARS`, `--matchlen CHARS` | Limit displayed line excerpts to approximately `CHARS` characters, centered on each match. A match longer than this value is kept whole. Context-only lines are shortened from the beginning. Must be a positive integer. |
 | `-e EXTENSIONS`, `--ext EXTENSIONS` | Comma-separated regular expressions full-matched against file suffixes, with or without the leading dot. For example, `txt,md` selects `.txt` and `.md`, `py|js` selects `.py` and `.js`, and `docx?` selects `.doc` and `.docx`. By default the searched extensions are `txt`, `md`, `pdf`, `docx`, `odt`, `odp`, and `pptx`. Specifying this option replaces the defaults; prefix it with `+` (for example, `+py,R,sh`) to add patterns while keeping the defaults. An empty entry selects files without an extension: `,` searches only extensionless files, while `py,` searches `.py` and extensionless files. |
 | `-f REGEX`, `--filename REGEX` | Search only files whose name without its extension matches this regular expression. For archives, the archive suffix is removed before testing; archive members are filtered by their member-name stem. |
+| `-x REGEXES`, `--exclude REGEXES` | Comma-separated regular expressions matched against relative directory paths (commas cannot appear inside an expression). Matching directories and all their contents are excluded, including archive members. Specifying this option replaces the defaults: `.git`, `.svn`, `.hg`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox`, `node_modules`, `.venv`, `venv`, `virtualenv`, `renv/library`, `renv/sandbox`, `.next`, `.nuxt`, `.terraform`, `target`, and `.gradle`. |
 | `--sort KEY[ r]` | Sort ordinary files and archives before searching. `a` sorts alphabetically by fully resolved path (default); `c` sorts by change time; `t` by modification time; `u` by last access time. Time sorts place newest files first. Add `r` to reverse the selected order, e.g. `--sort tr` searches oldest-modified files first. `--sort r` reverses alphabetical order. |
 | `-c MODE`, `--color MODE` | Set match coloring to `auto`, `always`, or `never`. `auto` (the default) uses color when standard output is a terminal. |
 | `-h`, `--help` | Show the help text and exit. |

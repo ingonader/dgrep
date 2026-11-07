@@ -130,6 +130,35 @@ def test_collect_archives_deduplicates_and_sorts_inputs(
     capsys.readouterr()
 
 
+def test_collect_archives_excludes_matching_directories_and_prunes_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    included = tmp_path / "source" / "docs.zip"
+    excluded = tmp_path / "node_modules" / "package" / "docs.zip"
+    included.parent.mkdir()
+    excluded.parent.mkdir(parents=True)
+    included.touch()
+    excluded.touch()
+    visited: list[Path] = []
+    walk = archive_handling.os.walk
+
+    def tracking_walk(root: str | Path):
+        for current_root, dirnames, filenames in walk(root):
+            visited.append(Path(current_root))
+            yield current_root, dirnames, filenames
+
+    monkeypatch.setattr(archive_handling.os, "walk", tracking_walk)
+    monkeypatch.setattr(archive_handling, "progress_enabled", lambda: False)
+
+    found = archive_handling.collect_archives(
+        [str(tmp_path)],
+        exclude_patterns=[re.compile(r"/node_modules/")],
+    )
+
+    assert found == [included.resolve()]
+    assert excluded.parent.parent not in visited
+
+
 @pytest.mark.parametrize(
     ("filename", "container"),
     [
@@ -242,3 +271,25 @@ def test_is_searchable_archive_member(
         )
         is expected
     )
+
+
+@pytest.mark.parametrize(
+    ("member_name", "ignore_case", "expected"),
+    [
+        ("renv/library/moby-dick.md", False, False),
+        ("RENV/library/moby-dick.md", False, True),
+        ("RENV/library/moby-dick.md", True, False),
+    ],
+)
+def test_is_searchable_archive_member_excludes_directories(
+    member_name: str, ignore_case: bool, expected: bool
+) -> None:
+    flags = re.IGNORECASE if ignore_case else 0
+    exclude_patterns = [re.compile(r"/renv/library/", flags)]
+
+    assert archive_handling.is_searchable_archive_member(
+        member_name,
+        [re.compile(r"\.md")],
+        None,
+        exclude_patterns=exclude_patterns,
+    ) is expected

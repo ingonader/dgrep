@@ -21,6 +21,10 @@ from .file_discovery import (
     get_allowed_extensions,
     collect_files,
 )
+from .regex_utils import (
+    DEFAULT_EXCLUDE_DIRS_SPEC,
+    compile_regex_list,
+)
 from .output import (
     print_error,
     progress_enabled,
@@ -196,6 +200,19 @@ def _run() -> int:
     )
 
     parser.add_argument(
+        "-x",
+        "--exclude",
+        default=DEFAULT_EXCLUDE_DIRS_SPEC,
+        metavar="REGEXES",
+        help=(
+            "Comma-separated regular expressions (commas cannot appear inside "
+            "an expression) matched against relative "
+            "directory paths; matching directories and their contents are "
+            "excluded. Replaces the default exclusions."
+        ),
+    )
+
+    parser.add_argument(
         "--sort",
         type=parse_sort_spec,
         default="a",
@@ -235,7 +252,7 @@ def _run() -> int:
     if args.matchlen is not None and args.matchlen < 1:
         parser.error("Match length must be a positive integer")
 
-    # Compile both expressions up front so invalid patterns fail before searching.
+    # Compile all expressions up front so invalid patterns fail before searching.
     try:
         pattern = compile_search_pattern(args.pattern, args.ignore_case)
     except re.error as exc:
@@ -255,12 +272,22 @@ def _run() -> int:
     except re.error as exc:
         parser.error(f"Invalid extension regular expression: {exc}")
 
+    try:
+        exclude_patterns = compile_regex_list(
+            args.exclude,
+            re.IGNORECASE if args.ignore_case else 0,
+        )
+    except re.error as exc:
+        parser.error(f"Invalid directory exclusion regular expression: {exc}")
+
     # Discover ordinary files and archives separately because their contents
     # require different extraction paths.
-    files = collect_files(args.paths, args.ext, filename_pattern, args.sort)
+    files = collect_files(
+        args.paths, args.ext, filename_pattern, args.sort, exclude_patterns
+    )
     files_unique_extensions = {path.suffix for path in files}
     archives = (
-        collect_archives(args.paths, filename_pattern, args.sort)
+        collect_archives(args.paths, filename_pattern, args.sort, exclude_patterns)
         if args.include_archives
         else []
     )
@@ -287,6 +314,7 @@ def _run() -> int:
                 allowed_extensions,
                 filename_pattern,
                 compressed_stream,
+                exclude_patterns,
             )
         )
 

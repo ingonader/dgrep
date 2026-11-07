@@ -42,8 +42,15 @@ def _prepare_cli(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
     ("arguments", "expected_message"),
     [
         (["[", "input"], "Invalid regular expression:"),
-        (["needle", "input", "--filename", "["], "Invalid filename regular expression:"),
+        (
+            ["needle", "input", "--filename", "["],
+            "Invalid filename regular expression:",
+        ),
         (["needle", "input", "--ext", "["], "Invalid extension regular expression:"),
+        (
+            ["needle", "input", "--exclude", "["],
+            "Invalid directory exclusion regular expression:",
+        ),
         (["needle", "input", "-B", "-1"], "Context values must be non-negative"),
         (["needle", "input", "-l", "0"], "Match length must be a positive integer"),
     ],
@@ -78,10 +85,14 @@ def test_run_searches_ordinary_files_with_parsed_options(
         formats: str | None,
         filename_pattern: re.Pattern[str] | None,
         sort_spec: str,
+        exclude_patterns: list[re.Pattern[str]],
     ) -> list[Path]:
         collection.update(
-            paths=paths, formats=formats, filename_pattern=filename_pattern,
+            paths=paths,
+            formats=formats,
+            filename_pattern=filename_pattern,
             sort_spec=sort_spec,
+            exclude_patterns=exclude_patterns,
         )
         return [first, second]
 
@@ -102,6 +113,8 @@ def test_run_searches_ordinary_files_with_parsed_options(
         "Needle",
         str(tmp_path),
         "--ignore-case",
+        "--exclude",
+        "renv,venv",
         "-B",
         "1",
         "-A",
@@ -127,6 +140,10 @@ def test_run_searches_ordinary_files_with_parsed_options(
     assert collection["paths"] == [str(tmp_path)]
     assert collection["formats"] == "+py"
     assert collection["sort_spec"] == "tr"
+    exclude_patterns = collection["exclude_patterns"]
+    assert isinstance(exclude_patterns, list)
+    assert [pattern.pattern for pattern in exclude_patterns] == ["renv", "venv"]
+    assert all(pattern.flags & re.IGNORECASE for pattern in exclude_patterns)
     filename_pattern = collection["filename_pattern"]
     assert isinstance(filename_pattern, re.Pattern)
     assert filename_pattern.pattern == "report"
@@ -201,7 +218,9 @@ def test_run_searches_matching_archive_members(
     assert link_path == archive
     captured = capsys.readouterr()
     assert "Found 0 files, and 1 archives containing another 1 files..." in captured.out
-    assert "Searched 0 files, and 1 archives containing another 1 files." in captured.out
+    assert (
+        "Searched 0 files, and 1 archives containing another 1 files." in captured.out
+    )
 
 
 def test_run_warns_and_continues_when_archive_cannot_be_read(
@@ -223,7 +242,9 @@ def test_run_warns_and_continues_when_archive_cannot_be_read(
 
     captured = capsys.readouterr()
     assert f"Warning: cannot read archive {archive}: broken archive" in captured.err
-    assert "Searched 0 files, and 1 archives containing another 0 files." in captured.out
+    assert (
+        "Searched 0 files, and 1 archives containing another 0 files." in captured.out
+    )
 
 
 def test_main_returns_run_status(monkeypatch: pytest.MonkeyPatch) -> None:
