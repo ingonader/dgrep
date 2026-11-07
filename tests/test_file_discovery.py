@@ -23,9 +23,7 @@ def test_default_exclusions_match_directory_segments() -> None:
     assert is_excluded_directory_path("src/.git/hooks", patterns)
     assert is_excluded_directory_path("renv/library/R", patterns)
     assert not is_excluded_directory_path("src/targeted", patterns)
-    assert is_excluded_directory_path(
-        "renv", [re.compile(r"^renv$")]
-    )
+    assert is_excluded_directory_path("renv", [re.compile(r"^renv$")])
 
 
 def test_get_allowed_extensions_defaults_to_default_formats() -> None:
@@ -53,6 +51,16 @@ def test_get_allowed_extensions_adds_to_defaults() -> None:
     assert file_discovery.is_allowed_extension(".py", allowed_extensions)
 
 
+def test_get_allowed_extensions_removes_from_defaults() -> None:
+    allowed_extensions = file_discovery.get_allowed_extensions("^md,pdf")
+
+    assert file_discovery.is_allowed_extension(".txt", allowed_extensions)
+    assert file_discovery.is_allowed_extension(".docx", allowed_extensions)
+    assert not file_discovery.is_allowed_extension(".md", allowed_extensions)
+    assert not file_discovery.is_allowed_extension(".pdf", allowed_extensions)
+    assert not file_discovery.is_allowed_extension(".py", allowed_extensions)
+
+
 def test_get_allowed_extensions_can_select_extensionless_files() -> None:
     allowed_extensions = file_discovery.get_allowed_extensions("txt,")
 
@@ -64,6 +72,23 @@ def test_get_allowed_extensions_can_select_extensionless_files() -> None:
 def test_get_allowed_extensions_rejects_invalid_regular_expressions() -> None:
     with pytest.raises(re.error):
         file_discovery.get_allowed_extensions("[")
+
+    with pytest.raises(re.error):
+        file_discovery.get_allowed_extensions("^[")
+
+
+def test_collect_files_removes_default_extensions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    markdown = tmp_path / "notes.md"
+    text = tmp_path / "notes.txt"
+    markdown.touch()
+    text.touch()
+    monkeypatch.setattr(file_discovery, "progress_enabled", lambda: False)
+
+    found = file_discovery.collect_files([str(tmp_path)], formats="^md")
+
+    assert found == [text.resolve()]
 
 
 def test_collect_files_excludes_matching_directories_and_prunes_them(
@@ -103,10 +128,13 @@ def test_collect_files_excludes_a_matching_search_root(
     (excluded_root / "notes.md").touch()
     monkeypatch.setattr(file_discovery, "progress_enabled", lambda: False)
 
-    assert file_discovery.collect_files(
-        [str(excluded_root)],
-        exclude_patterns=[re.compile("venv")],
-    ) == []
+    assert (
+        file_discovery.collect_files(
+            [str(excluded_root)],
+            exclude_patterns=[re.compile("venv")],
+        )
+        == []
+    )
 
 
 def test_collect_files_excludes_explicit_files_in_matching_directories(
@@ -117,10 +145,13 @@ def test_collect_files_excludes_explicit_files_in_matching_directories(
     excluded.touch()
     monkeypatch.setattr(file_discovery, "progress_enabled", lambda: False)
 
-    assert file_discovery.collect_files(
-        [str(excluded)],
-        exclude_patterns=[re.compile("renv")],
-    ) == []
+    assert (
+        file_discovery.collect_files(
+            [str(excluded)],
+            exclude_patterns=[re.compile("renv")],
+        )
+        == []
+    )
 
 
 def test_collect_files_recursively_filters_and_sorts(
@@ -156,9 +187,7 @@ def test_collect_files_accepts_custom_extensions_and_extensionless_files(
         path.touch()
     monkeypatch.setattr(file_discovery, "progress_enabled", lambda: False)
 
-    found = file_discovery.collect_files(
-        [str(tmp_path)], formats="py,"
-    )
+    found = file_discovery.collect_files([str(tmp_path)], formats="py,")
 
     assert found == [plain_text.resolve(), script.resolve()]
 
@@ -172,9 +201,7 @@ def test_collect_files_deduplicates_overlapping_inputs_and_sorts_reverse(
     second.touch()
     monkeypatch.setattr(file_discovery, "progress_enabled", lambda: False)
 
-    found = file_discovery.collect_files(
-        [str(tmp_path), str(first)], sort_spec="ar"
-    )
+    found = file_discovery.collect_files([str(tmp_path), str(first)], sort_spec="ar")
 
     assert found == [second.resolve(), first.resolve()]
 

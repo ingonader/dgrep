@@ -42,38 +42,56 @@ VALID_FORMATS = {extension.lstrip(".") for extension in SUPPORTED_EXTENSIONS}
 def get_allowed_extensions(
     extension_spec: str | None,
 ) -> list[re.Pattern[str]]:
-    """Compile extension patterns, including additive and extensionless forms.
+    """Compile extension patterns, including default modifiers.
 
     Args:
         extension_spec: Comma-separated regular expressions matched against
-            file suffixes. A leading `+` includes the default extensions, and
-            empty entries select files without an extension. `None` selects
-            only the defaults.
+            file suffixes. A leading `+` adds patterns to the defaults, and a
+            leading `^` removes matching extensions from the defaults. Empty
+            entries select files without an extension for ordinary and `+`
+            specifications. `None` selects only the defaults.
 
     Returns:
         Compiled regular expressions for matching file suffixes, including the
         empty suffix when extensionless files are selected.
     """
-    include_defaults = extension_spec is None or extension_spec.startswith("+")
-    allowed_extensions = (
-        [
+    if extension_spec is None:
+        extension_patterns = []
+        excluded_patterns = []
+        include_defaults = True
+    elif extension_spec.startswith("+"):
+        extension_spec = extension_spec[1:]
+        extension_patterns = compile_regex_list(
+            extension_spec,
+            re.IGNORECASE,
+            empty_pattern=r"^$",
+        )
+        excluded_patterns = []
+        include_defaults = True
+    elif extension_spec.startswith("^"):
+        excluded_patterns = compile_regex_list(
+            extension_spec[1:],
+            re.IGNORECASE,
+        )
+        extension_patterns = []
+        include_defaults = True
+    else:
+        extension_patterns = compile_regex_list(
+            extension_spec,
+            re.IGNORECASE,
+            empty_pattern=r"^$",
+        )
+        excluded_patterns = []
+        include_defaults = False
+
+    allowed_extensions = []
+    if include_defaults:
+        allowed_extensions = [
             re.compile(re.escape(extension), re.IGNORECASE)
             for extension in DEFAULT_EXTENSIONS
+            if not is_allowed_extension(extension, excluded_patterns)
         ]
-        if include_defaults
-        else []
-    )
-
-    if extension_spec is not None:
-        if include_defaults:
-            extension_spec = extension_spec[1:]
-        allowed_extensions.extend(
-            compile_regex_list(
-                extension_spec,
-                re.IGNORECASE,
-                empty_pattern=r"^$",
-            )
-        )
+    allowed_extensions.extend(extension_patterns)
 
     return allowed_extensions
 
@@ -93,8 +111,9 @@ def collect_files(
     Args:
         inputs: File and directory paths to search.
         formats: Comma-separated extension regular expressions. A leading `+`
-            adds to the default extensions, and empty entries select files
-            without an extension. `None` selects the default extensions.
+            adds to the default extensions, and a leading `^` removes matching
+            extensions from the defaults. Empty entries select files without
+            an extension. `None` selects the default extensions.
         filename_pattern: Optional regular expression matched against each
             filename stem.
         sort_spec: Sort key (`a`, `c`, `t`, or `u`) and optional reverse flag

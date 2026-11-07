@@ -181,7 +181,8 @@ def _run() -> int:
         metavar="EXTENSIONS",
         help=(
             "Comma-separated extension regexes (e.g., 'py,R,java' or 'docx?|xlsx?'); "
-            + "a leading '+' adds to the defaults (e.g., '+py,sh'), and empty entries "
+            + "a leading '+' adds to the defaults (e.g., '+py,sh'), a leading '^' "
+            + "removes matching defaults (e.g., '^pdf,docx'), and empty entries "
             + "(e.g., 'py,') select extensionless files. Patterns match the suffix "
             + "with or without its leading dot. "
             + "Defaults: "
