@@ -6,6 +6,7 @@ import pytest
 from dgrep import file_discovery
 from dgrep.regex_utils import (
     DEFAULT_EXCLUDE_DIRS_SPEC,
+    compile_exclude_patterns,
     compile_regex_list,
     is_excluded_directory_path,
 )
@@ -24,6 +25,24 @@ def test_default_exclusions_match_directory_segments() -> None:
     assert is_excluded_directory_path("renv/library/R", patterns)
     assert not is_excluded_directory_path("src/targeted", patterns)
     assert is_excluded_directory_path("renv", [re.compile(r"^renv$")])
+
+
+def test_compile_exclude_patterns_supports_default_modifiers() -> None:
+    defaults = compile_exclude_patterns(None)
+    assert is_excluded_directory_path(".git/hooks", defaults)
+    assert is_excluded_directory_path("renv/library/R", defaults)
+
+    replaced = compile_exclude_patterns("custom")
+    assert not is_excluded_directory_path(".git/hooks", replaced)
+    assert is_excluded_directory_path("custom", replaced)
+
+    added = compile_exclude_patterns("+custom")
+    assert is_excluded_directory_path(".git/hooks", added)
+    assert is_excluded_directory_path("custom", added)
+
+    removed = compile_exclude_patterns("^renv/library")
+    assert is_excluded_directory_path(".git/hooks", removed)
+    assert not is_excluded_directory_path("renv/library/R", removed)
 
 
 def test_get_allowed_extensions_defaults_to_default_formats() -> None:

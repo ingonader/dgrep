@@ -60,6 +60,80 @@ def compile_regex_list(
     return patterns
 
 
+def parse_regex_spec(
+    value: str | None,
+    flags: int = 0,
+    *,
+    empty_pattern: str | None = None,
+) -> tuple[str | None, list[re.Pattern[str]]]:
+    """Parse and compile a comma-separated regex specification.
+
+    A leading ``+`` or ``^`` is removed and returned as the modifier. Callers
+    use ``+`` to add patterns to defaults and ``^`` to remove matching defaults.
+
+    Args:
+        value: Comma-separated regular expressions, or ``None``.
+        flags: Flags passed to :func:`re.compile`.
+        empty_pattern: Pattern used for empty entries. Empty entries are
+            ignored when this is ``None`` or when ``value`` uses ``^``.
+
+    Returns:
+        A tuple containing the optional modifier and the compiled patterns.
+        If ``value`` is ``None``, returns ``(None, [])``.
+
+    Raises:
+        re.error: If any expression is invalid.
+    """
+    if value is None:
+        return None, []
+
+    modifier = value[0] if value.startswith(("+", "^")) else None
+    if modifier is not None:
+        value = value[1:]
+
+    return modifier, compile_regex_list(
+        value,
+        flags,
+        empty_pattern=empty_pattern if modifier != "^" else None,
+    )
+
+
+def compile_exclude_patterns(
+    value: str | None,
+    flags: int = 0,
+) -> list[re.Pattern[str]]:
+    """Compile directory exclusions with optional default-set modifiers.
+
+    Args:
+        value: Comma-separated directory regexes, or ``None`` to use only the
+            defaults. Without a prefix, the supplied patterns replace the
+            defaults; ``+`` adds patterns to them, and ``^`` removes matching
+            defaults.
+        flags: Flags passed to :func:`re.compile`.
+
+    Returns:
+        Compiled directory-exclusion patterns.
+
+    Raises:
+        re.error: If any supplied expression is invalid.
+    """
+    modifier, patterns = parse_regex_spec(value, flags)
+    if value is None:
+        return compile_regex_list(DEFAULT_EXCLUDE_DIRS_SPEC, flags)
+    if modifier is None:
+        return patterns
+
+    default_patterns = compile_regex_list(DEFAULT_EXCLUDE_DIRS_SPEC, flags)
+    if modifier == "+":
+        return default_patterns + patterns
+
+    return [
+        default
+        for default in default_patterns
+        if not any(pattern.search(default.pattern) for pattern in patterns)
+    ]
+
+
 def is_excluded_directory_path(
     relative_path: str | PurePosixPath,
     exclude_patterns: list[re.Pattern[str]],

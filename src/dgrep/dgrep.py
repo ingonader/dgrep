@@ -21,10 +21,7 @@ from .file_discovery import (
     get_allowed_extensions,
     collect_files,
 )
-from .regex_utils import (
-    DEFAULT_EXCLUDE_DIRS_SPEC,
-    compile_regex_list,
-)
+from .regex_utils import DEFAULT_EXCLUDE_DIRS_SPEC, compile_exclude_patterns
 from .output import (
     print_error,
     progress_enabled,
@@ -185,11 +182,11 @@ def _run() -> int:
             + "removes matching defaults (e.g., '^pdf,docx'), and empty entries "
             + "(e.g., 'py,') select extensionless files. Patterns match the suffix "
             + "with or without its leading dot. "
-            + "Defaults: "
+            + "Defaults: '"
             + ",".join([i[1:] for i in DEFAULT_EXTENSIONS])
-            + "; "
+            + "'; '"
             + ",".join([i[1:] for i in (SUPPORTED_EXTENSIONS - DEFAULT_EXTENSIONS)])
-            + " must be explicitly requested."
+            + "' must be explicitly requested."
         ),
     )
 
@@ -203,13 +200,18 @@ def _run() -> int:
     parser.add_argument(
         "-x",
         "--exclude",
-        default=DEFAULT_EXCLUDE_DIRS_SPEC,
+        default=None,
         metavar="REGEXES",
         help=(
             "Comma-separated regular expressions (commas cannot appear inside "
-            "an expression) matched against relative "
-            "directory paths; matching directories and their contents are "
-            "excluded. Replaces the default exclusions."
+            + "an expression) matched against relative "
+            + "directory paths; matching directories and their contents are "
+            + "excluded. A leading '+' adds patterns to the defaults, and a "
+            + "leading '^' removes matching defaults; otherwise this replaces "
+            + "the defaults. "
+            + "Defaults: '"
+            + DEFAULT_EXCLUDE_DIRS_SPEC
+            + "'"
         ),
     )
 
@@ -274,7 +276,7 @@ def _run() -> int:
         parser.error(f"Invalid extension regular expression: {exc}")
 
     try:
-        exclude_patterns = compile_regex_list(
+        exclude_patterns = compile_exclude_patterns(
             args.exclude,
             re.IGNORECASE if args.ignore_case else 0,
         )

@@ -4,7 +4,10 @@ import sys
 from pathlib import Path
 
 from .output import print_error, progress_enabled
-from .regex_utils import compile_regex_list, is_excluded_directory_path
+from .regex_utils import (
+    is_excluded_directory_path,
+    parse_regex_spec,
+)
 from .archive_handling import (
     is_allowed_extension,
     show_candidate_id_progress,
@@ -55,43 +58,24 @@ def get_allowed_extensions(
         Compiled regular expressions for matching file suffixes, including the
         empty suffix when extensionless files are selected.
     """
-    if extension_spec is None:
-        extension_patterns = []
-        excluded_patterns = []
-        include_defaults = True
-    elif extension_spec.startswith("+"):
-        extension_spec = extension_spec[1:]
-        extension_patterns = compile_regex_list(
-            extension_spec,
-            re.IGNORECASE,
-            empty_pattern=r"^$",
-        )
-        excluded_patterns = []
-        include_defaults = True
-    elif extension_spec.startswith("^"):
-        excluded_patterns = compile_regex_list(
-            extension_spec[1:],
-            re.IGNORECASE,
-        )
-        extension_patterns = []
-        include_defaults = True
-    else:
-        extension_patterns = compile_regex_list(
-            extension_spec,
-            re.IGNORECASE,
-            empty_pattern=r"^$",
-        )
-        excluded_patterns = []
-        include_defaults = False
+    modifier, extension_patterns = parse_regex_spec(
+        extension_spec,
+        re.IGNORECASE,
+        empty_pattern=r"^$",
+    )
+    if extension_spec is not None and modifier is None:
+        return extension_patterns
 
     allowed_extensions = []
-    if include_defaults:
-        allowed_extensions = [
-            re.compile(re.escape(extension), re.IGNORECASE)
-            for extension in DEFAULT_EXTENSIONS
-            if not is_allowed_extension(extension, excluded_patterns)
-        ]
-    allowed_extensions.extend(extension_patterns)
+    for extension in DEFAULT_EXTENSIONS:
+        if modifier != "^" or not is_allowed_extension(
+            extension, extension_patterns
+        ):
+            allowed_extensions.append(
+                re.compile(re.escape(extension), re.IGNORECASE)
+            )
+    if modifier != "^":
+        allowed_extensions.extend(extension_patterns)
 
     return allowed_extensions
 
