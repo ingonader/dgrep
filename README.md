@@ -20,7 +20,7 @@ Searches operate on extracted lines, and the search can span multiple lines when
 
 File names can also be filtered with a regular expression, and paths can be excluded as well (with sensible defaults for searching developer file trees).
 
-Sort order of displayed results can be configured.
+Sort order of displayed results can be configured, and are sorted by modification time by default (last modified displayed first).
 
 ## Disclaimer
 

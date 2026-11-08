@@ -159,7 +159,7 @@ def _iter_archive_candidates(
 def collect_archives(
     inputs: list[str],
     filename_pattern: re.Pattern[str] | None = None,
-    sort_spec: str = "a",
+    sort_spec: str = "t",
     exclude_patterns: list[re.Pattern[str]] | None = None,
     excluded_paths: set[str] | None = None,
 ) -> list[Path]:

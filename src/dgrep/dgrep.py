@@ -220,12 +220,12 @@ def _run() -> int:
     parser.add_argument(
         "--sort",
         type=parse_sort_spec,
-        default="a",
+        default="t",
         metavar="KEY",
         help=(
-            "Sort candidates by resolved path (a, default), change time (c), "
-            "modification time (t), or access time (u); add r to reverse "
-            "the order (e.g. tr)"
+            "Sort candidates by resolved path (a), change time (c), "
+            "modification time (t, the default), or access time (u); "
+            "add r to reverse the order (e.g. tr)"
         ),
     )
 
