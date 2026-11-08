@@ -1,6 +1,6 @@
 # dgrep
 
-`dgrep` searches files for a regular expression (similar to `grep` or `egrep`). The search is not limited to plain-text files, the tool can extract text from common formats. By default, files with the following extensions are searched:
+`dgrep` searches text and document files for a regular expression. The tool can extract text from common formats. By default, files with the following extensions are searched:
 
 * `.txt`: Plain-text files.
 * `.md`: Plain-text markdown files.
@@ -10,13 +10,21 @@
 * `.odp`: Open Document Format presentation files (e.g., LibreOffice).
 * `.pptx`: Powerpoint presentation files.
 
+The tool can search a single file or recursively search directories, and optionally searches within supported archive files like `.zip`, `.7z`, and various `.,tar` files.
+
 Files with matches are displayed as `file:///path/to/file.ext` , which in some terminals (like KDE's `konsole`) is rendered as link to open this file with the system's configured editor.
 
-The tool can search a single file or recursively search directories. It shows how many files will be searched and features a progress bar when standard error is connected to a terminal. It shows context around matches, highlights matching text, and optionally searches within supported archive files like `.zip`, `.7z`, and various `.,tar` files. Searches operate on extracted lines, and the search can span multiple lines when the search expression contains one or more `\n` sequences. In multiline mode, `^` and `$` match the beginning and end of any line; `.` does not match line breaks in either mode. File names can also be filtered with a regular expression.
+Matches are highlighted, and the tool can display context lines before/after matches, or limit the maximal line length around each match (useful for files with very long lines, to not clutter the results).
+
+Searches operate on extracted lines, and the search can span multiple lines when the search expression contains one or more `\n` sequences. In multiline mode, `^` and `$` match the beginning and end of any line; `.` does not match line breaks in either mode. 
+
+File names can also be filtered with a regular expression, and paths can be excluded as well (with sensible defaults for searching developer file trees).
+
+Sort order of displayed results can be configured.
 
 ## Disclaimer
 
-This tool has been developed for my own personal use. It was only tested on Linux, not other operating system. Most (but not all) code has been written by AI, with code reviews by a human. There is no guarantee that this tool works on any other system than my own, and I take no responsibility for any harm that might arise from installing or running the tool on your system.
+This tool has been developed for my own personal use. It was only tested on Linux, not other operating systems. Most (but not all) code has been written by AI, with human code reviews by myself. There is no guarantee that this tool works on any other system than my own, and I take no responsibility for any harm that might arise from installing or running the tool on your system.
 
 ## Installation
 
@@ -39,46 +47,6 @@ To run from a checkout of this repository, install the project dependencies and 
 uv sync
 uv run dgrep --help
 ```
-
-To install the development dependencies and run the test suite:
-
-```bash
-uv sync --group dev
-uv run pytest
-```
-
-To measure test coverage and show uncovered source lines, run:
-
-```bash
-uv run pytest --cov=dgrep --cov-report=term-missing
-```
-
-To create a browsable HTML report instead, run:
-
-```bash
-uv run pytest --cov=dgrep --cov-report=html
-```
-
-Open `htmlcov/index.html` to browse the report.
-
-Coverage data (`.coverage`) is generated locally and should not be committed.
-To keep a human-readable snapshot in Git for comparison, generate and commit a
-Markdown coverage report:
-
-```bash
-uv run pytest --cov=dgrep --cov-report=term-missing \
-  --cov-report=markdown:coverage-report.md
-```
-
-Commit `coverage-report.md` when you want to update the checked-in snapshot.
-
-Most document formats are handled by Python packages installed with `dgrep`. Two legacy formats need additional system programs:
-
-* `.doc` files require `antiword` (on Debian or Ubuntu: `sudo apt install antiword`).
-* `.ppt` files require LibreOffice Impress (on Debian or Ubuntu:
-  `sudo apt install libreoffice-impress`).
-
-These system programs are only needed when searching those formats. PDF, DOCX, PPTX, XLSX, ODF, and archive support is provided by the Python dependencies.
 
 ## Usage
 
@@ -160,11 +128,59 @@ The following document formats have dedicated text extraction:
 
 Other files selected by extension are read as UTF-8 text; invalid byte sequences are replaced. The default extension set is intentionally narrower than the formats supported by the extractors: `.doc`, `.ppt`, and `.xls` must be explicitly selected with `-e doc`, `-e ppt`, or `-e xls`.
 
+Most document formats are handled by Python packages installed with `dgrep`. Two legacy formats need additional system programs:
+
+* `.doc` files require `antiword` (on Debian or Ubuntu: `sudo apt install antiword`).
+* `.ppt` files require LibreOffice Impress (on Debian or Ubuntu:
+  `sudo apt install libreoffice-impress`).
+
+
+
+
+
 ## Archive searching
 
 Archive search is opt-in: without `-a`, archives are not searched. Supported formats are ZIP (`.zip`, `.jar`), 7-Zip (`.7z`), TAR (including `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, and `.txz`), and single-file compression (`.gz`, `.bz2`, `.xz`).
 
 Archive members use the same extension selection as ordinary files. A standalone compressed stream without an inner filename is treated as a `.txt` member. Members are read into temporary storage and searched using the same document extractors; they are not unpacked into the searched directory.
+
+
+
+## Development and Testing
+
+To install the development dependencies and run the test suite:
+
+```bash
+uv sync --group dev
+uv run pytest
+```
+
+To measure test coverage and show uncovered source lines, run:
+
+```bash
+uv run pytest --cov=dgrep --cov-report=term-missing
+```
+
+To create a browsable HTML report instead, run:
+
+```bash
+uv run pytest --cov=dgrep --cov-report=html
+```
+
+Open `htmlcov/index.html` to browse the report.
+
+Coverage data (`.coverage`) is generated locally and should not be committed.
+To keep a human-readable snapshot in Git for comparison, generate and commit a
+Markdown coverage report:
+
+```bash
+uv run pytest --cov=dgrep --cov-report=term-missing \
+  --cov-report=markdown:coverage-report.md
+```
+
+Commit `coverage-report.md` when you want to update the checked-in snapshot.
+
+
 
 ## Results and exit status
 
