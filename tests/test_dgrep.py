@@ -159,6 +159,29 @@ def test_run_searches_ordinary_files_with_parsed_options(
     assert "Searched 2 files (archives excluded by user)." in captured.out
 
 
+def test_run_clears_completed_progress_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "final.md"
+    _prepare_cli(monkeypatch, "needle", str(file_path))
+    monkeypatch.setattr(dgrep, "collect_files", lambda *args: [file_path])
+    monkeypatch.setattr(dgrep, "search_file", lambda *args: 0)
+    monkeypatch.setattr(dgrep, "progress_enabled", lambda: True)
+
+    def show_progress(*args: object, **kwargs: object) -> None:
+        print("\r[####################] 100.0% final.md", end="", file=dgrep.sys.stderr)
+
+    monkeypatch.setattr(dgrep, "show_search_progress", show_progress)
+
+    assert dgrep._run() == 1
+
+    stderr = capsys.readouterr().err
+    assert "100.0% final.md" in stderr
+    assert stderr.endswith("\r\033[K")
+
+
 def test_run_returns_failure_when_no_supported_files_are_found(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

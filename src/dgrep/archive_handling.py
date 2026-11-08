@@ -34,7 +34,7 @@ ARCHIVE_SUFFIXES = (
 def show_candidate_id_progress(cnt: int, candidate_name: str) -> None:
     if not progress_enabled():
         return
-    msg = f"Searching candidates: Found {str(cnt)} {candidate_name}..."
+    msg = f"Searching for candidate files: Found {str(cnt)} {candidate_name}..."
     print(f"\r{msg}", end="", file=sys.stderr, flush=True)
 
 
@@ -131,9 +131,7 @@ def _iter_archive_candidates(
     search_root = path.absolute()
     if find_excluded_directory_path(path.name, exclude_patterns) is not None:
         if excluded_paths is not None:
-            excluded_paths.add(
-                str(Path(os.path.relpath(search_root, Path.cwd())))
-            )
+            excluded_paths.add(str(Path(os.path.relpath(search_root, Path.cwd()))))
         return
 
     for current_root, dirnames, filenames in os.walk(search_root):

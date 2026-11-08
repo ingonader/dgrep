@@ -383,18 +383,18 @@ def _run() -> int:
             label="Files " if args.include_archives else "",
         )
 
-    # Print newline on stderr for correct printing afterwards.
+    # Clear stderr for correct printing afterwards.
     if progress_enabled():
-        print(file=sys.stderr)
+        print("\r\033[K", end="", file=sys.stderr)
 
     if args.include_archives:
         if files:
             if progress_enabled():
-                print(file=sys.stderr)
+                print("\r\033[K", end="", file=sys.stderr)
         else:
             show_search_progress(0, 0, "No ordinary files", label="Files ")
             if progress_enabled():
-                print(file=sys.stderr)
+                print("\r\033[K", end="", file=sys.stderr)
         print(f"Searching {len(archive_members)} files in archives...")
 
         # Extract each selected member to a temporary file before reusing search_file.
@@ -437,10 +437,6 @@ def _run() -> int:
                     )
         else:
             show_search_progress(0, 0, "No matching archive members", label="Archives ")
-
-        # Print newline on stderr for correct printing afterwards.
-        if progress_enabled():
-            print(file=sys.stderr)
 
     # Print summary of searched files.
     if args.include_archives:
