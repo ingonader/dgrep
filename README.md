@@ -85,30 +85,32 @@ Enable archive searching with `-a`:
 uvx dgrep -a 'search pattern' ./downloads
 ```
 
-Use quotes around patterns containing shell metacharacters such as `|`, `*`, parentheses, or spaces so the shell passes the complete regular expression to `dgrep`. Expressions use Python's regular-expression syntax.
+Use single quotes around patterns containing shell metacharacters such as `|`, `*`, parentheses, or spaces so the shell passes the complete regular expression to `dgrep`. Expressions use Python's regular-expression syntax.
 
 ## Command-line options
 
 Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
 
-| Option | Description |
-| --- | --- |
-| `PATTERN` | **Required.** Python regular expression searched in the extracted text. Expressions containing `\n` can match across lines; otherwise each line is searched independently. |
-| `PATH ...` | Optional. One or more files or directories. Directories are searched recursively. Defaults to the current directory (`.`). |
-| `-i`, `--ignore-case` | Ignore case in the content pattern, file-name pattern, and directory-exclusion patterns. |
-| `-a`, `--include-archives` | Also search supported archive files found at the given paths. Ordinary files are searched first. |
-| `-B N`, `--before-context N` | Print up to `N` lines before each matching line. Default: `0`. |
-| `-A N`, `--after-context N` | Print up to `N` lines after each matching line. Default: `0`. |
-| `-C N`, `--context N` | Print up to `N` lines before and after each match. This overrides `-A` and `-B` if they are also supplied. |
-| `-l CHARS`, `--matchlen CHARS` | Limit displayed line excerpts to approximately `CHARS` characters, centered on each match. A match longer than this value is kept whole. Context-only lines are shortened from the beginning. Must be a positive integer. |
-| `-e EXTENSIONS`, `--ext EXTENSIONS` | Comma-separated regular expressions full-matched against file suffixes, with or without the leading dot. For example, `txt,md` selects `.txt` and `.md`, `py|js` selects `.py` and `.js`, and `docx?` selects `.doc` and `.docx`. By default the searched extensions are `txt`, `md`, `pdf`, `docx`, `odt`, `odp`, and `pptx`. Specifying this option replaces the defaults; prefix it with `+` (for example, `+py,R,sh`) to add patterns while keeping the defaults, or `^` (for example, `^pdf,docx`) to remove matching extensions from the defaults. An empty entry selects files without an extension: `,` searches only extensionless files, while `py,` searches `.py` and extensionless files. |
-| `-f REGEX`, `--filename REGEX` | Search only files whose name without its extension matches this regular expression. For archives, the archive suffix is removed before testing; archive members are filtered by their member-name stem. |
-| `-x REGEXES`, `--exclude REGEXES` | Comma-separated regular expressions matched against relative directory paths (commas cannot appear inside an expression). Matching directories and all their contents are excluded, including archive members. By default, `/.git/`, `/.svn/`, `/.hg/`, `/__pycache__/`, `/.pytest_cache/`, `/.mypy_cache/`, `/.ruff_cache/`, `/.tox/`, `/.nox/`, `/node_modules/`, `/.venv/`, `/venv/`, `/virtualenv/`, `/renv/library/`, `/renv/sandbox/`, `/.next/`, `/.nuxt/`, `/.terraform/`, `/target/`, and `/.gradle/` are excluded. Specifying patterns replaces the defaults; prefix with `+` to add patterns to them, or `^` to remove matching defaults (for example, `-x '^renv/library'`). Paths excluded during discovery are summarized in the output. |
-| `--sort KEY[ r]` | Sort ordinary files and archives before searching. `a` sorts alphabetically by fully resolved path (default); `c` sorts by change time; `t` by modification time; `u` by last access time. Time sorts place newest files first. Add `r` to reverse the selected order, e.g. `--sort tr` searches oldest-modified files first. `--sort r` reverses alphabetical order. |
-| `-c MODE`, `--color MODE` | Set match coloring to `auto`, `always`, or `never`. `auto` (the default) uses color when standard output is a terminal. |
-| `-h`, `--help` | Show the help text and exit. |
+| Option | Short | Description |
+| --- | --- | --- |
+| `PATTERN` |  | **Required.** Python regular expression searched in the extracted text. Expressions containing `\n` can match across lines; otherwise each line is searched independently. |
+| `PATH ...` |  | Optional. One or more files or directories. Directories are searched recursively. Defaults to the current directory (`.`). |
+| `--ignore-case` | `-i` | Ignore case in the content pattern, file-name pattern, and directory-exclusion patterns. |
+| `--include-archives` | `-a` | Also search supported archive files found at the given paths. Ordinary files are searched first. |
+| `--before-context N` | `-B N` | Print up to `N` lines before each matching line. Default: `0`. |
+| `--after-context N` | `-A N` | Print up to `N` lines after each matching line. Default: `0`. |
+| `--context N` | `-C N` | Print up to `N` lines before and after each match. This overrides `-A` and `-B` if they are also supplied. |
+| `--matchlen N` | `-l N` | Limit displayed line excerpts to approximately `N` characters, centered on each match. A match longer than this value is kept whole. Context-only lines are shortened from the beginning. Must be a positive integer. |
+| `--ext REGEXES` | `-e REGEXES` | Comma-separated regular expressions full-matched against file suffixes, with or without the leading dot. For example, `txt,md` selects `.txt` and `.md`, `py|js` selects `.py` and `.js`, and `docx?` selects `.doc` and `.docx`. By default the searched extensions are `txt,md,pdf,docx,odt,odp,pptx`. Specifying this option replaces the defaults; prefix it with `+` (for example, `+py,R,sh`) to add patterns while keeping the defaults, or `^` (for example, `^pdf,docx`) to remove matching extensions from the defaults. An empty entry selects files without an extension; `,` searches only extensionless files, while `py,` searches `.py` and extensionless files. |
+| `--filename REGEX` | `-f REGEX` | Search only files whose name without its extension matches this regular expression. For archives, the archive suffix is removed before testing; archive members are filtered by their member-name stem. |
+| `--exclude REGEXES` | `-x REGEXES` | Comma-separated regular expressions matched against relative directory paths (commas cannot appear inside an expression). Matching directories and all their contents are excluded, including archive members. By default, `/.git/`, `/.svn/`, `/.hg/`, `/__pycache__/`, `/.pytest_cache/`, `/.mypy_cache/`, `/.ruff_cache/`, `/.tox/`, `/.nox/`, `/node_modules/`, `/.venv/`, `/venv/`, `/virtualenv/`, `/renv/library/`, `/renv/sandbox/`, `/.next/`, `/.nuxt/`, `/.terraform/`, `/target/`, and `/.gradle/` are excluded. Specifying patterns replaces the defaults; prefix with `+` to add patterns to them, or `^` to remove matching defaults (for example, `-x '^renv,venv'` will remove both `renv` defaults `/renv/library`/ and `/renv/sandbox/`and both `venv` defaults `/venv/` and `/.venv/`). Paths excluded during discovery are summarized in the output. |
+| `--sort KEY[ r]` |  | Sort ordinary files and archives before searching. `a` sorts alphabetically by fully resolved path; `c` sorts by change time; `t` by modification time (default); `u` by last access time. Time sorts place newest files first. Add `r` to reverse the selected order, e.g. `--sort tr` searches oldest-modified files first. `--sort r` reverses alphabetical order. |
+| `-c MODE`, `--color MODE` |  | Set match coloring to `auto`, `always`, or `never`. `auto` (the default) uses color when standard output is a terminal. |
+| `--help` | `-h` | Show the help text and exit. |
 
 Context counts must be non-negative. The `-C` option takes precedence over `-A` and `-B`.
+
+
 
 ## Supported files
 
@@ -133,8 +135,6 @@ Most document formats are handled by Python packages installed with `dgrep`. Two
 * `.doc` files require `antiword` (on Debian or Ubuntu: `sudo apt install antiword`).
 * `.ppt` files require LibreOffice Impress (on Debian or Ubuntu:
   `sudo apt install libreoffice-impress`).
-
-
 
 
 

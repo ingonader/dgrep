@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import textwrap
 import re
 import sys
 from pathlib import Path
@@ -80,6 +81,22 @@ def parse_sort_spec(value: str) -> str:
     return value
 
 
+class PreserveNewlinesFormatter(argparse.HelpFormatter):
+
+    def _fill_text(self, text, width, indent):
+        return "\n".join(
+            textwrap.fill(line, width, initial_indent=indent, subsequent_indent=indent)
+            for line in text.splitlines()
+        )
+
+    def _split_lines(self, text, width):
+        return [
+            wrapped_line
+            for line in text.splitlines()
+            for wrapped_line in textwrap.wrap(line, width)
+        ]
+
+
 class DgrepArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         print_error(self.format_usage().rstrip("\n"))
@@ -109,33 +126,47 @@ def _run() -> int:
             + ", ".join([i[1:] for i in SUPPORTED_EXTENSIONS])
             + " as well as any other plain-text files "
             + "using regular expressions."
-        )
+        ),
+        formatter_class=PreserveNewlinesFormatter,
     )
 
     parser.add_argument(
         "pattern",
-        help="Regular expression to search for",
+        help=(
+            "Required. Python regular expression searched in the extracted text. "
+            + "Expressions containing '\\n' can match across lines; otherwise "
+            + "each line is searched independently."
+        ),
     )
 
     parser.add_argument(
         "paths",
         nargs="*",
         default=["."],
-        help="Files or directories to search (default: current directory)",
+        help=(
+            "Optional. One or more files or directories. Directories are "
+            + "searched recursively. Defaults to the current directory ('.')."
+        ),
     )
 
     parser.add_argument(
         "-i",
         "--ignore-case",
         action="store_true",
-        help="Ignore case distinctions",
+        help=(
+            "Ignore case in the content pattern, file-name pattern, and "
+            + "directory-exclusion patterns."
+        ),
     )
 
     parser.add_argument(
         "-a",
         "--include-archives",
         action="store_true",
-        help="Search supported archive files after searching ordinary files",
+        help=(
+            "Also search supported archive files found at the given paths. "
+            + "Ordinary files are searched first."
+        ),
     )
 
     parser.add_argument(
@@ -143,7 +174,8 @@ def _run() -> int:
         "--before-context",
         type=int,
         default=0,
-        help="Number of context lines before each match",
+        metavar="N",
+        help="Print up to N lines before each matching line. Default: 0.",
     )
 
     parser.add_argument(
@@ -151,7 +183,8 @@ def _run() -> int:
         "--after-context",
         type=int,
         default=0,
-        help="Number of context lines after each match",
+        metavar="N",
+        help="Print up to N lines after each matching line. Default: 0.",
     )
 
     parser.add_argument(
@@ -159,7 +192,11 @@ def _run() -> int:
         "--context",
         type=int,
         default=None,
-        help="Number of context lines on both sides",
+        metavar="N",
+        help=(
+            "Print up to N lines before and after each match. This overrides "
+            + "-A and -B if they are also supplied."
+        ),
     )
 
     parser.add_argument(
@@ -167,8 +204,13 @@ def _run() -> int:
         "--matchlen",
         type=int,
         default=None,
-        metavar="CHARS",
-        help="Limit each match excerpt to CHARS, centered on the match",
+        metavar="N",
+        help=(
+            "Limit displayed line excerpts to approximately CHARS characters, "
+            + "centered on each match. A match longer than this value is kept "
+            + "whole. Context-only lines are shortened from the beginning. "
+            + "Must be a positive integer."
+        ),
     )
 
     parser.add_argument(
@@ -176,18 +218,25 @@ def _run() -> int:
         "--ext",
         type=str,
         default=None,
-        metavar="EXTENSIONS",
+        metavar="REGEXES",
         help=(
-            "Comma-separated extension regexes (e.g., 'py,R,java' or 'docx?|xlsx?'); "
-            + "a leading '+' adds to the defaults (e.g., '+py,sh'), a leading '^' "
-            + "removes matching defaults (e.g., '^pdf,docx'), and empty entries "
-            + "(e.g., 'py,') select extensionless files. Patterns match the suffix "
-            + "with or without its leading dot. "
-            + "Defaults: '"
+            "Comma-separated regular expressions full-matched against file "
+            + "suffixes, with or without the leading dot. For example, "
+            + "'txt,md' selects .txt and .md, 'py|js' selects .py and .js, "
+            + "and 'docx?' selects .doc and .docx. \n"
+            + "Defaults: \n'"
             + ",".join([i[1:] for i in DEFAULT_EXTENSIONS])
-            + "'; '"
+            + "';\n"
+            + "Specifying this option replaces the defaults;\n"
+            + "A leading '+' (for example, '+py,R,sh') adds patterns to defaults;\n"
+            + "A leading '^' (for example, '^pdf,docx') removes matching extensions "
+            + "from the defaults.\n"
+            + "An empty entry selects files without an extension; ',' searches only "
+            + "extensionless files, while 'py,' searches .py and "
+            + "extensionless files.\n"
+            + "Other supported extensions, such as '"
             + ",".join([i[1:] for i in (SUPPORTED_EXTENSIONS - DEFAULT_EXTENSIONS)])
-            + "' must be explicitly requested."
+            + "', must be explicitly requested."
         ),
     )
 
@@ -195,7 +244,12 @@ def _run() -> int:
         "-f",
         "--filename",
         metavar="REGEX",
-        help="Only search files whose name without its extension matches this regex",
+        help=(
+            "Search only files whose name without its extension matches this "
+            + "regular expression. For archives, the archive suffix is "
+            + "removed before testing; archive members are filtered by their "
+            + "member-name stem."
+        ),
     )
 
     parser.add_argument(
@@ -204,16 +258,18 @@ def _run() -> int:
         default=None,
         metavar="REGEXES",
         help=(
-            "Comma-separated regular expressions (commas cannot appear inside "
-            + "an expression) matched against relative "
-            + "directory paths; matching directories and their contents are "
-            + "excluded. A leading '+' adds patterns to the defaults, and a "
-            + "leading '^' removes matching defaults; otherwise this replaces "
-            + "the defaults. "
-            + "Defaults: '"
+            "Comma-separated regular expressions matched against relative "
+            + "directory paths (commas cannot appear inside an expression). "
+            + "Matching directories and all their contents are excluded, "
+            + "including archive members.\n"
+            + "Defaults: \n'"
             + DEFAULT_EXCLUDE_DIRS_SPEC
-            + "'. Paths excluded during discovery are summarized on standard "
-            + "output."
+            + "'\n"
+            + "Specifying patterns replaces the defaults.\n"
+            + "A leading '+' adds patterns to the defaults.\n"
+            + "A leading '^' removes matching defaults (for example, '^renv,venv' removes matching "
+            + "renv and venv defaults).\n"
+            + "Paths excluded during discovery are summarized in the output."
         ),
     )
 
@@ -223,9 +279,12 @@ def _run() -> int:
         default="t",
         metavar="KEY",
         help=(
-            "Sort candidates by resolved path (a), change time (c), "
-            "modification time (t, the default), or access time (u); "
-            "add r to reverse the order (e.g. tr)"
+            "Sort ordinary files and archives before searching. 'a' sorts "
+            + "alphabetically by fully resolved path; 'c' by change time; "
+            + "'t' by modification time (default); 'u' by last access time. "
+            + "Time sorts place newest files first. Add 'r' to reverse the "
+            + "selected order, e.g. 'tr' searches oldest-modified files first. "
+            + "'r' alone reverses alphabetical order."
         ),
     )
 
@@ -234,7 +293,10 @@ def _run() -> int:
         "--color",
         choices=["auto", "always", "never"],
         default="auto",
-        help=("Colorize matching text: " "auto (default), always, or never."),
+        help=(
+            "Set match coloring to 'auto', 'always', or 'never'. 'auto' "
+            + "(the default) uses color when standard output is a terminal."
+        ),
     )
     # Parse and normalize command-line options before discovering input files.
     args = parser.parse_args()
