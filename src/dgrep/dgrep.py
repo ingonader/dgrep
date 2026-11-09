@@ -500,6 +500,10 @@ def _run() -> int:
         else:
             show_search_progress(0, 0, "No matching archive members", label="Archives ")
 
+    # Print newline on stderr for correct printing afterwards.
+    if progress_enabled():
+        print("\r\033[K", end="", file=sys.stderr)
+
     # Print summary of searched files.
     if args.include_archives:
         print(
