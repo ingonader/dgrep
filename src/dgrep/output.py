@@ -1,5 +1,6 @@
 import sys
 import shutil
+from pathlib import Path
 
 
 def configure_colors(mode: str) -> tuple[str, str]:
@@ -24,6 +25,19 @@ def configure_colors(mode: str) -> tuple[str, str]:
 
 def progress_enabled() -> bool:
     return sys.stderr.isatty()
+
+
+def hyperlink(path: Path) -> str:
+    """Format a file path as a file-URI label for search output."""
+    uri = path.resolve().as_uri()
+    return f"{uri} "
+
+
+def print_file(link_path: Path, output_name: str) -> None:
+    """Print a terminal-width separator followed by a file's display label."""
+    terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    print("=" * terminal_width)
+    print(f"\r{hyperlink(link_path)}{output_name}")
 
 
 def print_error(message: str) -> None:

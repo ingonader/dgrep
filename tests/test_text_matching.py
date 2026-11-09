@@ -1,15 +1,20 @@
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from dgrep import text_matching
+from dgrep import output, text_matching
 
 
-def test_hyperlink_formats_path_as_terminal_uri(tmp_path: Path) -> None:
-    path = tmp_path / "fake document.txt"
-
-    assert text_matching.hyperlink(path) == f"====> {path.resolve().as_uri()} "
+def _set_output_terminal_width(
+    monkeypatch: pytest.MonkeyPatch, terminal_width: int
+) -> None:
+    monkeypatch.setattr(
+        output.shutil,
+        "get_terminal_size",
+        lambda fallback: SimpleNamespace(columns=terminal_width),
+    )
 
 
 @pytest.mark.parametrize(
@@ -94,6 +99,7 @@ def test_search_file_prints_matches_and_merged_context(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "fake.txt"
+    _set_output_terminal_width(monkeypatch, terminal_width=40)
     monkeypatch.setattr(
         text_matching,
         "extract_text",
@@ -111,7 +117,8 @@ def test_search_file_prints_matches_and_merged_context(
     captured = capsys.readouterr()
     assert count == 2
     assert captured.out == (
-        f"\r====> {path.resolve().as_uri()} \n"
+        "=" * 40 + "\n"
+        f"\r{path.resolve().as_uri()} \n"
         "1- before\n"
         "2: needle one\n"
         "3- between\n"
@@ -128,6 +135,7 @@ def test_search_file_matches_multiple_lines_and_highlights_each_line(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "fake.txt"
+    _set_output_terminal_width(monkeypatch, terminal_width=40)
     monkeypatch.setattr(
         text_matching,
         "extract_text",
@@ -146,7 +154,8 @@ def test_search_file_matches_multiple_lines_and_highlights_each_line(
     captured = capsys.readouterr()
     assert count == 3
     assert captured.out == (
-        f"\r====> {path.resolve().as_uri()} \n"
+        "=" * 40 + "\n"
+        f"\r{path.resolve().as_uri()} \n"
         "2: <start>\n"
         "3: <middle>\n"
         "4: <end>\n"
@@ -207,6 +216,7 @@ def test_search_file_formats_archive_member_link(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "archive.zip"
+    _set_output_terminal_width(monkeypatch, terminal_width=40)
     monkeypatch.setattr(text_matching, "extract_text", lambda source: ["fake match"])
 
     count = text_matching.search_file(
@@ -223,7 +233,9 @@ def test_search_file_formats_archive_member_link(
     captured = capsys.readouterr()
     assert count == 1
     assert captured.out == (
-        f"\r====> {path.resolve().as_uri()} !/folder/member.txt\n" "1: fake <match>\n"
+        "=" * 40 + "\n"
+        f"\r{path.resolve().as_uri()} !/folder/member.txt\n"
+        "1: fake <match>\n"
     )
 
 

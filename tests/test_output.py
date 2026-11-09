@@ -1,4 +1,5 @@
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -49,14 +50,37 @@ def test_progress_is_enabled_when_stderr_is_a_terminal(
     assert output.progress_enabled()
 
 
+def test_hyperlink_formats_path_as_terminal_uri(tmp_path: Path) -> None:
+    path = tmp_path / "fake document.txt"
+
+    assert output.hyperlink(path) == f"{path.resolve().as_uri()} "
+
+
+def test_print_file_prints_separator_and_hyperlink(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "fake document.txt"
+    monkeypatch.setattr(
+        output.shutil,
+        "get_terminal_size",
+        lambda fallback: SimpleNamespace(columns=12),
+    )
+
+    output.print_file(path, "display name")
+
+    assert capsys.readouterr().out == (
+        "=" * 12 + "\n" + f"\r{output.hyperlink(path)}display name\n"
+    )
+
+
 def test_print_error_duplicates_to_redirected_stdout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stdout = StringIO()
     stderr = TerminalStream()
-    monkeypatch.setattr(
-        output, "sys", SimpleNamespace(stdout=stdout, stderr=stderr)
-    )
+    monkeypatch.setattr(output, "sys", SimpleNamespace(stdout=stdout, stderr=stderr))
 
     output.print_error("Warning: failed")
 
@@ -69,9 +93,7 @@ def test_print_error_does_not_duplicate_when_stderr_is_not_a_terminal(
 ) -> None:
     stdout = StringIO()
     stderr = StringIO()
-    monkeypatch.setattr(
-        output, "sys", SimpleNamespace(stdout=stdout, stderr=stderr)
-    )
+    monkeypatch.setattr(output, "sys", SimpleNamespace(stdout=stdout, stderr=stderr))
 
     output.print_error("Warning: failed")
 

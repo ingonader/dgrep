@@ -3,7 +3,7 @@ import sys
 from bisect import bisect_right
 from pathlib import Path
 
-from .output import print_error, progress_enabled
+from .output import print_file, print_error, progress_enabled
 from .text_extraction import extract_text
 
 
@@ -34,12 +34,6 @@ def compile_search_pattern(pattern: str, ignore_case: bool = False) -> re.Patter
         flags |= re.MULTILINE
 
     return re.compile(pattern, flags)
-
-
-def hyperlink(path: Path) -> str:
-    """Format a file path as a terminal OSC 8 hyperlink."""
-    uri = path.resolve().as_uri()
-    return f"====> {uri} "
 
 
 def merge_ranges(
@@ -258,7 +252,7 @@ def search_file(
         output_name = f"!/{display_name}"
     else:
         output_name = display_name or ""
-    print(f"\r{hyperlink(link_path or path)}{output_name}")
+    print_file(link_path or path, output_name)
 
     for start, end in ranges:
         for index in range(start, end + 1):
