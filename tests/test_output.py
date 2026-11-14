@@ -44,10 +44,22 @@ def test_progress_is_enabled_when_stderr_is_a_terminal(
     monkeypatch.setattr(
         output,
         "sys",
-        SimpleNamespace(stdout=StringIO(), stderr=TerminalStream()),
+        SimpleNamespace(stdout=TerminalStream(), stderr=TerminalStream()),
     )
 
     assert output.progress_enabled()
+
+
+def test_progress_is_disabled_when_stdout_is_not_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        output,
+        "sys",
+        SimpleNamespace(stdout=StringIO(), stderr=TerminalStream()),
+    )
+
+    assert not output.progress_enabled()
 
 
 def test_hyperlink_formats_path_as_terminal_uri(tmp_path: Path) -> None:

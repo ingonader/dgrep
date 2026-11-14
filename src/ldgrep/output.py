@@ -24,7 +24,7 @@ def configure_colors(mode: str) -> tuple[str, str]:
 
 
 def progress_enabled() -> bool:
-    return sys.stderr.isatty()
+    return sys.stdout.isatty() and sys.stderr.isatty()
 
 
 def hyperlink(path: Path) -> str:
