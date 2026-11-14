@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Ingo N.", email = "ingo.nader@gmail.com" }
 ]
+license = { text = "MPL-2.0" }
 requires-python = ">=3.12"
 dependencies = [
     "argparse>=1.4.0",

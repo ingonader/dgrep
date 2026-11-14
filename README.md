@@ -26,6 +26,12 @@ Sort order of displayed results can be configured, and are sorted by modificatio
 
 This tool has been developed for my own personal use. It was only tested on Linux, not other operating systems. Most (but not all) code has been written by AI, with human code reviews by myself. There is no guarantee that this tool works on any other system than my own, and I take no responsibility for any harm that might arise from installing or running the tool on your system.
 
+
+## License
+
+This project is licensed under the Mozilla Public License 2.0 (MPL-2.0). See [LICENSE](LICENSE) for the full text.
+
+
 ## Installation
 
 `ldgrep` requires Python 3.12 or newer. The simplest way to run it without installing it permanently is with [`uv`](https://docs.astral.sh/uv/):
