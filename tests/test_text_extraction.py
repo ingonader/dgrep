@@ -277,17 +277,87 @@ def test_pdf_extractors_handle_empty_pages(monkeypatch) -> None:
     """Verify pages with no extractable text still get page markers."""
     import types
 
+    page = SimpleNamespace(
+        extract_text=lambda: None,
+        get=lambda key, default=None: default,
+    )
+    reader = SimpleNamespace(
+        pages=[page],
+        get_fields=lambda: {},
+        metadata={},
+        trailer={"/Root": {}},
+        outline=[],
+    )
     monkeypatch.setitem(
         sys.modules,
         "pypdf",
-        types.SimpleNamespace(
-            PdfReader=lambda path: SimpleNamespace(
-                pages=[SimpleNamespace(extract_text=lambda: None)]
-            )
-        ),
+        types.SimpleNamespace(PdfReader=lambda path: reader),
     )
 
     assert text_extraction.extract_pdf_text_pypdf(Path("sample")) == ["[PDF page 1]"]
+
+
+def test_pdf_extracts_annotations_forms_metadata_and_bookmarks(tmp_path: Path) -> None:
+    """Verify both PDF engines return annotations, fields, properties, and outlines."""
+    import pymupdf
+
+    source = tmp_path / "rich.pdf"
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "PDF body text")
+    annotation = page.add_text_annot((72, 100), "Annotation body")
+    annotation.set_info(
+        title="Review title",
+        subject="Review subject",
+        content="Annotation body",
+    )
+
+    widget = pymupdf.Widget()
+    widget.field_name = "customer"
+    widget.field_label = "Customer"
+    widget.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
+    widget.field_value = "Ahab"
+    widget.rect = pymupdf.Rect(72, 140, 220, 165)
+    page.add_widget(widget)
+    widget.update()
+
+    document.set_metadata(
+        {
+            "title": "PDF title",
+            "subject": "PDF subject",
+            "keywords": "alpha, beta",
+        }
+    )
+    document.set_xml_metadata(
+        """<x:xmpmeta xmlns:x="adobe:ns:meta/">
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+            <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <dc:description><rdf:Alt><rdf:li xml:lang="x-default">
+                PDF description
+              </rdf:li></rdf:Alt></dc:description>
+            </rdf:Description>
+          </rdf:RDF>
+        </x:xmpmeta>"""
+    )
+    document.set_toc([[1, "Chapter bookmark", 1]])
+    document.save(source)
+    document.close()
+
+    for extractor in (
+        text_extraction.extract_pdf_text_pymupdf,
+        text_extraction.extract_pdf_text_pypdf,
+    ):
+        extracted = "\n".join(extractor(source))
+        for expected in [
+            "Annotation body",
+            "Customer: Ahab",
+            "Title: PDF title",
+            "Subject: PDF subject",
+            "Keywords: alpha, beta",
+            "Description: PDF description",
+            "Chapter bookmark",
+        ]:
+            assert expected in extracted
 
 
 def test_pymupdf_extracts_page_text(monkeypatch) -> None:

@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 import re
 import shutil
@@ -261,6 +261,175 @@ def _convert_with_libreoffice(path: Path, output_format: str) -> Iterator[Path]:
         yield converted
 
 
+def _extract_pdf_metadata(
+    metadata: Mapping[str, object],
+    xmp_metadata: bytes | str | None = None,
+) -> list[str]:
+    """Extract standard title, subject, keywords, and description metadata.
+
+    Args:
+        metadata: PDF document-information dictionary.
+        xmp_metadata: Optional XMP metadata stream.
+
+    Returns:
+        Labeled lines for each available metadata field.
+    """
+    xmp_values: dict[str, str] = {}
+    if xmp_metadata:
+        root = ET.fromstring(xmp_metadata)
+        namespaces = {
+            "dc": "http://purl.org/dc/elements/1.1/",
+            "pdf": "http://ns.adobe.com/pdf/1.3/",
+        }
+        for label, namespace, tag in [
+            ("Title", namespaces["dc"], "title"),
+            ("Subject", namespaces["dc"], "subject"),
+            ("Keywords", namespaces["pdf"], "Keywords"),
+            ("Description", namespaces["dc"], "description"),
+        ]:
+            values = [
+                " ".join(text.strip() for text in element.itertext() if text.strip())
+                for element in root.iter(f"{{{namespace}}}{tag}")
+            ]
+            values = [value for value in values if value]
+            if values:
+                xmp_values[label] = ", ".join(values)
+
+    keys = (
+        ("Title", ("title", "/Title")),
+        ("Subject", ("subject", "/Subject")),
+        ("Keywords", ("keywords", "/Keywords")),
+        ("Description", ("description", "/Description")),
+    )
+    lines = []
+    for label, aliases in keys:
+        value = next((metadata[key] for key in aliases if metadata.get(key)), None)
+        if value is not None:
+            if isinstance(value, (list, tuple)):
+                text = ", ".join(str(part) for part in value)
+            else:
+                text = str(value)
+            text = text.strip()
+        else:
+            text = ""
+        if not text:
+            text = xmp_values.get(label, "")
+        if not text and label == "Keywords":
+            text = xmp_values.get("Subject", "")
+        if text:
+            lines.append(f"{label}: {text}")
+
+    return lines
+
+
+def _extract_pdf_pypdf_features(reader) -> list[str]:
+    """Extract annotations, form fields, metadata, and bookmarks with pypdf.
+
+    Args:
+        reader: Open `pypdf.PdfReader` instance.
+
+    Returns:
+        Searchable lines for all supported PDF supplemental content.
+    """
+    lines = []
+    for page_number, page in enumerate(reader.pages, start=1):
+        for annotation_ref in page.get("/Annots", []):
+            annotation = annotation_ref.get_object()
+            subtype = str(annotation.get("/Subtype", "")).strip("/")
+            if subtype == "Widget":
+                continue
+
+            content = str(annotation.get("/Contents", "")).strip()
+            title = str(annotation.get("/T", "")).strip()
+            subject = str(annotation.get("/Subj", "")).strip()
+            details = [value for value in (title, subject, content) if value]
+            if details:
+                details.insert(0, subtype)
+                lines.append(
+                    f"[PDF Annotation - Page {page_number}] " + ": ".join(details)
+                )
+
+    for field_name, field in (reader.get_fields() or {}).items():
+        value = field.get("/V") if hasattr(field, "get") else None
+        label = field.get("/TU") if hasattr(field, "get") else None
+        display_name = label or field_name
+        text = (
+            f"{display_name}: {value}"
+            if value is not None
+            else str(display_name)
+        )
+        lines.append(f"[PDF Form Field] {text}")
+
+    info = reader.metadata or {}
+    xmp_stream = reader.trailer["/Root"].get("/Metadata")
+    xmp_bytes = xmp_stream.get_object().get_data() if xmp_stream else None
+    lines.extend(_extract_pdf_metadata(info, xmp_bytes))
+
+    def append_bookmarks(bookmarks) -> None:
+        for bookmark in bookmarks:
+            if isinstance(bookmark, list):
+                append_bookmarks(bookmark)
+            else:
+                title = getattr(bookmark, "title", None)
+                if title:
+                    lines.append(f"[PDF Bookmark] {title}")
+
+    append_bookmarks(reader.outline)
+    return lines
+
+
+def _extract_pdf_pymupdf_features(document) -> list[str]:
+    """Extract annotations, widgets, metadata, and bookmarks with PyMuPDF.
+
+    Args:
+        document: Open PyMuPDF document.
+
+    Returns:
+        Searchable lines for all supported PDF supplemental content.
+    """
+    lines = []
+
+    for page_number, page in enumerate(document, start=1):
+        annotations = page.annots() if hasattr(page, "annots") else None
+        for annotation in annotations or []:
+            info = annotation.info
+            details = [
+                str(info.get(key, "")).strip()
+                for key in ("subject", "title", "content")
+                if info.get(key)
+            ]
+            if details:
+                lines.append(
+                    f"[PDF Annotation - Page {page_number}] " + ": ".join(details)
+                )
+
+        widgets = page.widgets() if hasattr(page, "widgets") else None
+        for widget in widgets or []:
+            name = str(getattr(widget, "field_name", "") or "").strip()
+            value = getattr(widget, "field_value", None)
+            label = str(getattr(widget, "field_label", "") or "").strip()
+            field_name = label or name
+            if field_name or value is not None:
+                field_value = "" if value is None else str(value)
+                lines.append(f"[PDF Form Field] {field_name}: {field_value}".rstrip())
+
+    metadata = getattr(document, "metadata", None) or {}
+    xmp_metadata = (
+        document.get_xml_metadata()
+        if hasattr(document, "get_xml_metadata")
+        else None
+    )
+    lines.extend(_extract_pdf_metadata(metadata, xmp_metadata))
+
+    get_toc = getattr(document, "get_toc", None)
+    if get_toc is not None:
+        for entry in get_toc():
+            if len(entry) >= 3 and entry[1]:
+                lines.append(f"[PDF Bookmark] {entry[1]}")
+
+    return lines
+
+
 def extract_pdf_text_pypdf(path: Path) -> list[str]:
     """Extract page text from a PDF, marking each page in the result.
 
@@ -289,6 +458,7 @@ def extract_pdf_text_pypdf(path: Path) -> list[str]:
         text = page.extract_text() or ""
         lines.extend(text.splitlines())
 
+    lines.extend(_extract_pdf_pypdf_features(reader))
     return lines
 
 
@@ -319,6 +489,8 @@ def extract_pdf_text_pymupdf(path: Path) -> list[str]:
 
             text = page.get_text("text") or ""
             lines.extend(text.splitlines())
+
+        lines.extend(_extract_pdf_pymupdf_features(doc))
 
     return lines
 

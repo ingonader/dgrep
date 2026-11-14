@@ -118,7 +118,7 @@ The following document formats have dedicated text extraction:
 
 | Extension | Extracted content |
 | --- | --- |
-| `.pdf` | Page text, with a page marker included before each page. |
+| `.pdf` | Page text and markers, annotations, form fields, bookmarks, and title, subject, keywords, and description metadata. |
 | `.docx` | Word paragraphs and tables, frames, footnotes, endnotes, comments, hyperlink URLs, and core metadata. |
 | `.doc` | Legacy Word content with rich extraction through LibreOffice; falls back to `antiword` text when LibreOffice is unavailable. |
 | `.pptx` | Slide text, tables, frames, speaker notes, comments, hyperlink URLs, and core metadata. |
