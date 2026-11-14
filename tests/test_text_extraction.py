@@ -323,6 +323,7 @@ def test_extract_doc_text_returns_lines_and_reports_failures(
     monkeypatch, tmp_path: Path
 ) -> None:
     """Verify antiword success, missing executable, and conversion errors."""
+    monkeypatch.setattr(text_extraction.shutil, "which", lambda name: None)
     source = tmp_path / "sample.doc"
     source.touch()
     monkeypatch.setattr(
@@ -351,31 +352,109 @@ def test_extract_doc_text_returns_lines_and_reports_failures(
         text_extraction.extract_doc_text(source)
 
 
-def test_docx_preserves_empty_paragraphs_and_line_breaks(monkeypatch) -> None:
+def test_docx_preserves_empty_paragraphs_and_line_breaks(
+    monkeypatch, tmp_path: Path
+) -> None:
     """Verify DOCX extraction preserves empty paragraphs and split lines."""
     import types
 
     monkeypatch.setitem(
         sys.modules,
         "docx",
-        types.SimpleNamespace(
-            Document=lambda path: SimpleNamespace(
-                paragraphs=[
-                    SimpleNamespace(text="first\nsecond"),
-                    SimpleNamespace(text=""),
-                ]
-            )
-        ),
+        types.SimpleNamespace(Document=lambda path: None),
     )
+    source = tmp_path / "sample.docx"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            b"""<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:r><w:t>first</w:t><w:br/><w:t>second</w:t></w:r></w:p>
+                <w:p/>
+              </w:body>
+            </w:document>""",
+        )
 
-    assert text_extraction.extract_docx_text(Path("sample")) == [
+    assert text_extraction.extract_docx_text(source) == [
         "first",
         "second",
         "",
     ]
 
 
-def test_pptx_extracts_shapes_tables_groups_and_notes(monkeypatch) -> None:
+def test_docx_extracts_tables_notes_comments_links_and_metadata(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Verify DOCX rich content and core properties are searchable."""
+    import types
+
+    monkeypatch.setitem(
+        sys.modules, "docx", types.SimpleNamespace(Document=lambda path: None)
+    )
+    source = tmp_path / "rich.docx"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            b"""<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <w:body>
+                <w:p><w:r><w:t>Body</w:t></w:r><w:r><w:drawing><w:txbxContent>
+                  <w:p><w:r><w:t>Text box</w:t></w:r></w:p>
+                </w:txbxContent></w:drawing></w:r></w:p>
+                <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Table cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+                <w:p><w:hyperlink r:id="rId1"><w:r><w:t>Link label</w:t></w:r></w:hyperlink></w:p>
+              </w:body>
+            </w:document>""",
+        )
+        for part, text in [
+            ("header1.xml", "Header text"),
+            ("footer1.xml", "Footer text"),
+            ("footnotes.xml", "Footnote text"),
+            ("endnotes.xml", "Endnote text"),
+            ("comments.xml", "Comment text"),
+        ]:
+            archive.writestr(
+                f"word/{part}",
+                f"""<w:root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                  <w:p><w:r><w:t>{text}</w:t></w:r></w:p>
+                </w:root>""",
+            )
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            b"""<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                Target="https://example.test/word" TargetMode="External"/>
+            </Relationships>""",
+        )
+        archive.writestr(
+            "docProps/core.xml",
+            b"""<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+                xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <dc:title>Word title</dc:title><dc:subject>Word subject</dc:subject>
+              <cp:keywords>word, search</cp:keywords><dc:description>Word description</dc:description>
+            </cp:coreProperties>""",
+        )
+
+    extracted = "\n".join(text_extraction.extract_docx_text(source))
+    for expected in [
+        "Body",
+        "Text box",
+        "Table cell",
+        "Header text",
+        "Footer text",
+        "Footnote text",
+        "Endnote text",
+        "Comment text",
+        "Hyperlink: https://example.test/word",
+        "Title: Word title",
+        "Subject: Word subject",
+        "Keywords: word, search",
+        "Description: Word description",
+    ]:
+        assert expected in extracted
+
+
+def test_pptx_extracts_shapes_tables_groups_and_notes(monkeypatch, tmp_path: Path) -> None:
     """Verify recursive slide content and optional speaker notes are included."""
     import types
 
@@ -427,8 +506,31 @@ def test_pptx_extracts_shapes_tables_groups_and_notes(monkeypatch) -> None:
             Presentation=lambda path: SimpleNamespace(slides=[slide, empty_notes])
         ),
     )
+    source = tmp_path / "sample.pptx"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(
+            "ppt/comments/comment1.xml",
+            b"""<p:cmLst xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <p:cm><p:text><a:p><a:r><a:t>Slide comment</a:t></a:r></a:p></p:text></p:cm>
+            </p:cmLst>""",
+        )
+        archive.writestr(
+            "ppt/slides/_rels/slide1.xml.rels",
+            b"""<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                Target="https://example.test/slide" TargetMode="External"/>
+            </Relationships>""",
+        )
+        archive.writestr(
+            "docProps/core.xml",
+            b"""<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+                xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <dc:title>Slide deck title</dc:title>
+            </cp:coreProperties>""",
+        )
 
-    assert text_extraction.extract_pptx_text(Path("sample")) == [
+    assert text_extraction.extract_pptx_text(source) == [
         "[Slide 1]",
         "Title",
         "A | B",
@@ -437,6 +539,9 @@ def test_pptx_extracts_shapes_tables_groups_and_notes(monkeypatch) -> None:
         "note one",
         "note two",
         "[Slide 2]",
+        "Comment: Slide comment",
+        "Hyperlink: https://example.test/slide",
+        "Title: Slide deck title",
     ]
 
 
@@ -571,8 +676,8 @@ def test_odf_extracts_nested_content_links_and_metadata(tmp_path: Path) -> None:
     assert lines.count("Endnote body") == 1
 
 
-def test_xlsx_normalizes_empty_cells_and_closes_workbook(monkeypatch) -> None:
-    """Verify empty values, custom separators, and workbook cleanup."""
+def test_xlsx_extracts_extra_text_and_closes_workbook(monkeypatch, tmp_path: Path) -> None:
+    """Verify cell values, drawing text, comments, links, metadata, and cleanup."""
     import types
 
     class Sheet:
@@ -597,12 +702,46 @@ def test_xlsx_normalizes_empty_cells_and_closes_workbook(monkeypatch) -> None:
         ),
     )
 
-    assert text_extraction.extract_xlsx_text(Path("sample"), separator="::") == [
-        "Data::::3::False"
+    source = tmp_path / "sample.xlsx"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr(
+            "xl/drawings/drawing1.xml",
+            b"""<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <xdr:sp><xdr:txBody><a:p><a:r><a:t>Text box</a:t></a:r></a:p></xdr:txBody></xdr:sp>
+            </xdr:wsDr>""",
+        )
+        archive.writestr(
+            "xl/comments1.xml",
+            b"""<comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <commentList><comment ref="A1" authorId="0"><text><r><t>Cell comment</t></r></text></comment></commentList>
+            </comments>""",
+        )
+        archive.writestr(
+            "xl/worksheets/_rels/sheet1.xml.rels",
+            b"""<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                Target="https://example.test/cell" TargetMode="External"/>
+            </Relationships>""",
+        )
+        archive.writestr(
+            "docProps/core.xml",
+            b"""<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+                xmlns:dc="http://purl.org/dc/elements/1.1/">
+              <dc:title>Workbook title</dc:title>
+            </cp:coreProperties>""",
+        )
+
+    assert text_extraction.extract_xlsx_text(source, separator="::") == [
+        "Data::::3::False",
+        "Text box",
+        "Comment: Cell comment",
+        "Hyperlink: https://example.test/cell",
+        "Title: Workbook title",
     ]
     assert workbook.closed
     assert workbook.options == {
-        "filename": "sample",
+        "filename": str(source),
         "read_only": True,
         "data_only": True,
     }
@@ -639,6 +778,7 @@ def test_xls_normalizes_cell_types_and_unknown_errors(monkeypatch) -> None:
     import types
     from datetime import datetime
 
+    monkeypatch.setattr(text_extraction.shutil, "which", lambda name: None)
     cells = [
         SimpleNamespace(ctype=0, value=""),
         SimpleNamespace(ctype=6, value=""),
@@ -653,6 +793,10 @@ def test_xls_normalizes_cell_types_and_unknown_errors(monkeypatch) -> None:
         nrows=1,
         ncols=len(cells),
         cell=lambda row, col: cells[col],
+        hyperlink_map={
+            (0, 0): SimpleNamespace(url_or_path="https://example.test/legacy")
+        },
+        cell_note_map={(0, 0): SimpleNamespace(text="Legacy comment")},
     )
     workbook = SimpleNamespace(sheets=lambda: [sheet], datemode=0)
     fake_xlrd = types.SimpleNamespace(
@@ -668,7 +812,9 @@ def test_xls_normalizes_cell_types_and_unknown_errors(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "xlrd", fake_xlrd)
 
     assert text_extraction.extract_xls_text(Path("sample"), separator=";") == [
-        "Data;;;2024-01-02T00:00:00;true;#DIV/0!;99;text"
+        "Data;;;2024-01-02T00:00:00;true;#DIV/0!;99;text",
+        "Hyperlink: https://example.test/legacy",
+        "Comment: Legacy comment",
     ]
 
 

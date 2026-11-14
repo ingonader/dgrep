@@ -119,22 +119,23 @@ The following document formats have dedicated text extraction:
 | Extension | Extracted content |
 | --- | --- |
 | `.pdf` | Page text, with a page marker included before each page. |
-| `.docx` | Word paragraphs, preserving blank paragraphs. |
-| `.doc` | Legacy Word document text, using `antiword`. |
-| `.pptx` | Slide text, table rows, and speaker notes, with slide markers. |
+| `.docx` | Word paragraphs and tables, frames, footnotes, endnotes, comments, hyperlink URLs, and core metadata. |
+| `.doc` | Legacy Word content with rich extraction through LibreOffice; falls back to `antiword` text when LibreOffice is unavailable. |
+| `.pptx` | Slide text, tables, frames, speaker notes, comments, hyperlink URLs, and core metadata. |
 | `.ppt` | Legacy PowerPoint content, converted to PPTX with LibreOffice first. |
-| `.xlsx` | Worksheet rows, including the sheet name and cell values. |
-| `.xls` | Legacy Excel worksheet rows and values. |
+| `.xlsx` | Worksheet rows, drawing text, comments, hyperlink URLs, and core metadata. |
+| `.xls` | Legacy Excel rows and hyperlinks; LibreOffice adds comments, drawing text, and core metadata. |
 | `.ods` | Spreadsheet rows, visible cell text and stored values, text outside cells, hyperlinks, and document metadata. |
 | `.odt`, `.odp` | Text and headings, including tables, frames, notes, comments, and hyperlink URLs, plus document metadata. |
 
 Other files selected by extension are read as UTF-8 text; invalid byte sequences are replaced. The default extension set is intentionally narrower than the formats supported by the extractors: `.doc`, `.ppt`, and `.xls` must be explicitly selected with `-e doc`, `-e ppt`, or `-e xls`.
 
-Most document formats are handled by Python packages installed with `ldgrep`. Two legacy formats need additional system programs:
+Most document formats are handled by Python packages installed with `ldgrep`. Legacy formats use additional system programs where available:
 
-* `.doc` files require `antiword` (on Debian or Ubuntu: `sudo apt install antiword`).
+* `.doc` files use LibreOffice for rich extraction when available; without it, `antiword` provides basic document text (on Debian or Ubuntu: `sudo apt install antiword`).
 * `.ppt` files require LibreOffice Impress (on Debian or Ubuntu:
   `sudo apt install libreoffice-impress`).
+* `.xls` files use LibreOffice when available to extract comments, drawing text, and metadata in addition to worksheet data.
 
 
 

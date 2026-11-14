@@ -1,8 +1,20 @@
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
+
+OOXML_WORD_NAMESPACE = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+OOXML_DRAWING_NAMESPACE = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+OOXML_PACKAGE_REL_NAMESPACE = (
+    "{http://schemas.openxmlformats.org/package/2006/relationships}"
+)
+OOXML_CORE_NAMESPACE = "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}"
+OOXML_DC_NAMESPACE = "{http://purl.org/dc/elements/1.1/}"
 
 ODF_TEXT_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
 ODF_TABLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
@@ -10,6 +22,243 @@ ODF_XLINK_NAMESPACE = "{http://www.w3.org/1999/xlink}"
 ODF_DC_NAMESPACE = "{http://purl.org/dc/elements/1.1/}"
 ODF_META_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:meta:1.0}"
 ODF_PARAGRAPH_TAGS = {f"{ODF_TEXT_NAMESPACE}p", f"{ODF_TEXT_NAMESPACE}h"}
+
+
+def _extract_ooxml_paragraph_text(
+    paragraph: ET.Element,
+    text_tag: str,
+    paragraph_tag: str,
+) -> str:
+    """Serialize text and line breaks from an OOXML paragraph.
+
+    Args:
+        paragraph: Paragraph element whose text should be serialized.
+        text_tag: Qualified XML tag used for run text in the document format.
+        paragraph_tag: Qualified XML tag used for paragraphs, to skip nested
+            text-box paragraphs that are extracted separately.
+
+    Returns:
+        Paragraph text with tabs and explicit line breaks preserved.
+    """
+    parts = []
+
+    def visit(element: ET.Element, is_root: bool = False) -> None:
+        if not is_root and element.tag == paragraph_tag:
+            return
+
+        if element.tag == text_tag:
+            parts.append(element.text or "")
+            return
+
+        if element.tag in {
+            f"{OOXML_WORD_NAMESPACE}tab",
+            f"{OOXML_DRAWING_NAMESPACE}tab",
+        }:
+            parts.append("\t")
+            return
+
+        if element.tag in {
+            f"{OOXML_WORD_NAMESPACE}br",
+            f"{OOXML_WORD_NAMESPACE}cr",
+            f"{OOXML_DRAWING_NAMESPACE}br",
+        }:
+            parts.append("\n")
+            return
+
+        for child in element:
+            visit(child)
+
+    visit(paragraph, is_root=True)
+    return "".join(parts)
+
+
+def _extract_ooxml_paragraphs(
+    archive: zipfile.ZipFile,
+    part_names: list[str],
+    paragraph_tag: str,
+    text_tag: str,
+    *,
+    preserve_empty: bool = True,
+) -> list[str]:
+    """Extract paragraph text from selected OOXML package parts.
+
+    Args:
+        archive: Open OOXML ZIP package.
+        part_names: Package paths of XML parts to search.
+        paragraph_tag: Qualified XML tag identifying paragraphs.
+        text_tag: Qualified XML tag identifying text runs.
+        preserve_empty: Whether to retain paragraphs with no visible text.
+
+    Returns:
+        Extracted paragraph contents split into lines.
+    """
+    lines = []
+
+    for part_name in part_names:
+        root = ET.fromstring(archive.read(part_name))
+        for paragraph in root.iter(paragraph_tag):
+            text = _extract_ooxml_paragraph_text(
+                paragraph, text_tag, paragraph_tag
+            )
+            if text or preserve_empty:
+                lines.extend(text.splitlines() or [""])
+
+    return lines
+
+
+def _extract_ooxml_hyperlinks(archive: zipfile.ZipFile) -> list[str]:
+    """Collect unique external hyperlink targets from package relationships.
+
+    Args:
+        archive: Open OOXML ZIP package.
+
+    Returns:
+        One labeled line for each unique external hyperlink URL.
+    """
+    urls = []
+
+    for part_name in archive.namelist():
+        if not part_name.endswith(".rels"):
+            continue
+
+        root = ET.fromstring(archive.read(part_name))
+        for relation in root.iter(f"{OOXML_PACKAGE_REL_NAMESPACE}Relationship"):
+            if (
+                relation.get("Type", "").endswith("/hyperlink")
+                and relation.get("TargetMode") == "External"
+            ):
+                target = relation.get("Target")
+                if target and target not in urls:
+                    urls.append(target)
+
+    return [f"Hyperlink: {url}" for url in urls]
+
+
+def _extract_ooxml_metadata(archive: zipfile.ZipFile) -> list[str]:
+    """Extract standard title, subject, keywords, and description properties.
+
+    Args:
+        archive: Open OOXML ZIP package.
+
+    Returns:
+        Labeled metadata lines found in `docProps/core.xml`.
+    """
+    try:
+        root = ET.fromstring(archive.read("docProps/core.xml"))
+    except KeyError:
+        return []
+
+    fields = (
+        ("Title", f"{OOXML_DC_NAMESPACE}title"),
+        ("Subject", f"{OOXML_DC_NAMESPACE}subject"),
+        ("Keywords", f"{OOXML_CORE_NAMESPACE}keywords"),
+        ("Description", f"{OOXML_DC_NAMESPACE}description"),
+    )
+    lines = []
+
+    for label, tag in fields:
+        values = [
+            "".join(element.itertext()).strip()
+            for element in root.iter(tag)
+            if "".join(element.itertext()).strip()
+        ]
+        if values:
+            lines.append(f"{label}: {', '.join(values)}")
+
+    return lines
+
+
+def _extract_ooxml_comments(archive: zipfile.ZipFile) -> list[str]:
+    """Extract comment text from Word, PowerPoint, and Excel comment parts.
+
+    Args:
+        archive: Open OOXML ZIP package.
+
+    Returns:
+        Comment contents as labeled lines.
+    """
+    comment_parts = [
+        name
+        for name in archive.namelist()
+        if name.endswith(".xml")
+        and (
+            re.fullmatch(r"word/comments[^/]*\.xml", name)
+            or re.fullmatch(r"xl/comments[^/]*\.xml", name)
+            or name.startswith("ppt/comments/")
+            or name.startswith("xl/threadedComments/")
+        )
+    ]
+    lines = []
+
+    for part_name in comment_parts:
+        root = ET.fromstring(archive.read(part_name))
+        for comment in root.iter():
+            if comment.tag.rsplit("}", 1)[-1] not in {
+                "comment",
+                "cm",
+                "threadedComment",
+            }:
+                continue
+
+            text = "".join(
+                element.text or ""
+                for element in comment.iter()
+                if element.tag.rsplit("}", 1)[-1] == "t"
+            )
+            text = comment.get("text", text).strip()
+            if text:
+                lines.append(f"Comment: {text}")
+
+    return lines
+
+
+@contextmanager
+def _convert_with_libreoffice(path: Path, output_format: str) -> Iterator[Path]:
+    """Convert a legacy Office document into a temporary OOXML file.
+
+    Args:
+        path: Legacy Office file to convert.
+        output_format: LibreOffice output format, such as `docx` or `xlsx`.
+
+    Yields:
+        Path to the converted file, valid until the context manager exits.
+
+    Raises:
+        RuntimeError: If LibreOffice is missing, conversion fails, or times out.
+    """
+    with tempfile.TemporaryDirectory(prefix="ldgrep_") as temp_dir:
+        try:
+            result = subprocess.run(
+                [
+                    "libreoffice",
+                    "--headless",
+                    "--convert-to",
+                    output_format,
+                    "--outdir",
+                    temp_dir,
+                    str(path.resolve()),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Legacy Office conversion requires LibreOffice."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "LibreOffice conversion timed out after 120 seconds."
+            ) from exc
+
+        converted = Path(temp_dir) / f"{path.stem}.{output_format}"
+        if result.returncode != 0 or not converted.is_file():
+            details = result.stderr.strip() or result.stdout.strip()
+            raise RuntimeError(
+                f"LibreOffice could not convert {path.suffix} file. {details}"
+            )
+
+        yield converted
 
 
 def extract_pdf_text_pypdf(path: Path) -> list[str]:
@@ -90,19 +339,23 @@ def extract_pdf_text(path: Path) -> list[str]:
 
 
 def extract_doc_text(path: Path) -> list[str]:
-    """Extract lines from a legacy Word `.doc` file using antiword.
+    """Extract a legacy Word `.doc`, converting it when LibreOffice is available.
 
     Args:
         path: Legacy Word document to read.
 
     Returns:
-        The converted document text split into lines.
+        Extracted document content split into lines.
 
     Raises:
-        RuntimeError: If antiword is missing or cannot process the document.
+        RuntimeError: If the selected converter is missing or cannot process the
+            document.
     """
+    if shutil.which("libreoffice"):
+        with _convert_with_libreoffice(path, "docx") as converted:
+            return extract_docx_text(converted)
+
     try:
-        # antiword provides text conversion for the binary .doc format.
         result = subprocess.run(
             ["antiword", str(path)],
             capture_output=True,
@@ -125,13 +378,14 @@ def extract_doc_text(path: Path) -> list[str]:
 
 
 def extract_docx_text(path: Path) -> list[str]:
-    """Extract paragraph text from a Word `.docx` document.
+    """Extract content and core properties from a Word `.docx` document.
 
     Args:
         path: Word document to read.
 
     Returns:
-        Paragraph contents split into lines; empty paragraphs are preserved.
+        Paragraph contents from the body, tables, frames, headers, footers,
+        footnotes, endnotes, and comments, followed by metadata and hyperlinks.
 
     Raises:
         RuntimeError: If python-docx is unavailable.
@@ -144,24 +398,37 @@ def extract_docx_text(path: Path) -> list[str]:
             "DOCX support requires: " "python -m pip install python-docx"
         ) from exc
 
-    # Preserve blank paragraphs so extracted line positions reflect the document.
-    document = Document(str(path))
-    lines = []
-
-    for paragraph in document.paragraphs:
-        lines.extend(paragraph.text.splitlines() or [""])
+    Document(str(path))
+    with zipfile.ZipFile(path) as archive:
+        part_names = [
+            name
+            for name in archive.namelist()
+            if re.fullmatch(
+                r"word/(?:document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml",
+                name,
+            )
+        ]
+        part_names.sort(key=lambda name: (name != "word/document.xml", name))
+        lines = _extract_ooxml_paragraphs(
+            archive,
+            part_names,
+            f"{OOXML_WORD_NAMESPACE}p",
+            f"{OOXML_WORD_NAMESPACE}t",
+        )
+        lines.extend(_extract_ooxml_hyperlinks(archive))
+        lines.extend(_extract_ooxml_metadata(archive))
 
     return lines
 
 
 def extract_pptx_text(path: Path) -> list[str]:
-    """Extract visible text, tables, and speaker notes from a presentation.
+    """Extract slide text, tables, notes, comments, hyperlinks, and metadata.
 
     Args:
         path: PowerPoint `.pptx` file to read.
 
     Returns:
-        Extracted slide text as lines, preceded by slide and notes markers.
+        Slide text, tables, notes, comments, hyperlinks, and metadata as lines.
 
     Raises:
         RuntimeError: If python-pptx is unavailable.
@@ -229,6 +496,11 @@ def extract_pptx_text(path: Path) -> list[str]:
                     lines.append(f"[Speaker Notes - Slide {slide_number}]")
                     lines.extend(notes_text.splitlines())
 
+    with zipfile.ZipFile(path) as archive:
+        lines.extend(_extract_ooxml_comments(archive))
+        lines.extend(_extract_ooxml_hyperlinks(archive))
+        lines.extend(_extract_ooxml_metadata(archive))
+
     return lines
 
 
@@ -242,49 +514,13 @@ def extract_ppt_text(path: Path) -> list[str]:
         path: Legacy PowerPoint presentation to convert.
 
     Returns:
-        Extracted slide text and speaker notes as lines.
+        Slide text, tables, notes, comments, hyperlinks, and metadata as lines.
 
     Raises:
         RuntimeError: If LibreOffice is missing, conversion fails, or times out.
     """
-    try:
-        with tempfile.TemporaryDirectory(prefix="docgrep_") as temp_dir:
-            # Store the conversion in a temporary directory to avoid altering input files.
-            result = subprocess.run(
-                [
-                    "libreoffice",
-                    "--headless",
-                    "--convert-to",
-                    "pptx",
-                    "--outdir",
-                    temp_dir,
-                    str(path.resolve()),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-
-            converted = Path(temp_dir) / (path.stem + ".pptx")
-
-            if result.returncode != 0 or not converted.is_file():
-                details = result.stderr.strip() or result.stdout.strip()
-
-                raise RuntimeError(
-                    "LibreOffice could not convert the PPT file. " + details
-                )
-
-            return extract_pptx_text(converted)
-
-    except FileNotFoundError as exc:
-        raise RuntimeError(
-            "Legacy PPT support requires LibreOffice. "
-            "Install it with: sudo apt install libreoffice-impress"
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            "LibreOffice conversion timed out after 120 seconds."
-        ) from exc
+    with _convert_with_libreoffice(path, "pptx") as converted:
+        return extract_pptx_text(converted)
 
 
 def _extract_odf_xml_text(element: ET.Element) -> str:
@@ -448,6 +684,40 @@ def extract_odf_text(path: Path) -> list[str]:
     return lines
 
 
+def _extract_xlsx_supplemental_text(path: Path) -> list[str]:
+    """Extract Excel drawing text, comments, hyperlinks, and core properties.
+
+    Args:
+        path: XLSX package to inspect.
+
+    Returns:
+        Additional searchable text not included in worksheet cell values.
+    """
+    lines = []
+    with zipfile.ZipFile(path) as archive:
+        drawing_parts = [
+            name
+            for name in archive.namelist()
+            if name.startswith("xl/drawings/")
+            and name.endswith(".xml")
+            and "/_rels/" not in name
+        ]
+        lines.extend(
+            _extract_ooxml_paragraphs(
+                archive,
+                drawing_parts,
+                f"{OOXML_DRAWING_NAMESPACE}p",
+                f"{OOXML_DRAWING_NAMESPACE}t",
+                preserve_empty=False,
+            )
+        )
+        lines.extend(_extract_ooxml_comments(archive))
+        lines.extend(_extract_ooxml_hyperlinks(archive))
+        lines.extend(_extract_ooxml_metadata(archive))
+
+    return lines
+
+
 def extract_xlsx_text(path: Path, separator: str = "|") -> list[str]:
     """Extract worksheet rows from an Excel `.xlsx` workbook.
 
@@ -459,7 +729,8 @@ def extract_xlsx_text(path: Path, separator: str = "|") -> list[str]:
         separator: String used between the sheet name and cell values.
 
     Returns:
-        One delimited string for each worksheet row.
+        Delimited worksheet rows followed by drawing text, comments,
+        hyperlinks, and metadata.
 
     Raises:
         RuntimeError: If openpyxl is unavailable.
@@ -483,6 +754,7 @@ def extract_xlsx_text(path: Path, separator: str = "|") -> list[str]:
     finally:
         workbook.close()
 
+    lines.extend(_extract_xlsx_supplemental_text(path))
     return lines
 
 
@@ -495,7 +767,8 @@ def extract_xls_text(path: Path, separator: str = "|") -> list[str]:
 
     Returns:
         One delimited string for each worksheet row, with values normalized
-        according to their Excel cell type.
+        according to their Excel cell type, followed by available comments,
+        hyperlinks, drawing text, and metadata.
 
     Raises:
         RuntimeError: If xlrd is unavailable.
@@ -535,6 +808,20 @@ def extract_xls_text(path: Path, separator: str = "|") -> list[str]:
                 values.append(value)
 
             lines.append(separator.join([sheet.name, *values]))
+
+        if not shutil.which("libreoffice"):
+            for hyperlink in getattr(sheet, "hyperlink_map", {}).values():
+                target = getattr(hyperlink, "url_or_path", None)
+                if target:
+                    lines.append(f"Hyperlink: {target}")
+            for note in getattr(sheet, "cell_note_map", {}).values():
+                text = getattr(note, "text", "")
+                if text:
+                    lines.append(f"Comment: {text}")
+
+    if shutil.which("libreoffice"):
+        with _convert_with_libreoffice(path, "xlsx") as converted:
+            lines.extend(_extract_xlsx_supplemental_text(converted))
 
     return lines
 
