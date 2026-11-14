@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dgrep import output, text_matching
+from ldgrep import output, text_matching
 
 
 def _set_output_terminal_width(

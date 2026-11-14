@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from dgrep import file_discovery
-from dgrep.regex_utils import (
+from ldgrep import file_discovery
+from ldgrep.regex_utils import (
     DEFAULT_EXCLUDE_DIRS_SPEC,
     compile_exclude_patterns,
     compile_regex_list,

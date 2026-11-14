@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dgrep import dgrep
+from ldgrep import ldgrep
 
 
 @pytest.mark.parametrize(
@@ -21,21 +21,21 @@ from dgrep import dgrep
     ],
 )
 def test_parse_sort_spec_accepts_valid_values(value: str, expected: str) -> None:
-    assert dgrep.parse_sort_spec(value) == expected
+    assert ldgrep.parse_sort_spec(value) == expected
 
 
 @pytest.mark.parametrize("value", ["", "x", "aa", "rr", "ac", "arx", "ca"])
 def test_parse_sort_spec_rejects_invalid_values(value: str) -> None:
     with pytest.raises(argparse.ArgumentTypeError):
-        dgrep.parse_sort_spec(value)
+        ldgrep.parse_sort_spec(value)
 
 
 def _prepare_cli(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
-    monkeypatch.setattr(dgrep.sys, "argv", ["dgrep", *args])
-    monkeypatch.setattr(dgrep, "configure_logging", lambda: None)
-    monkeypatch.setattr(dgrep, "configure_colors", lambda color: ("<", ">"))
-    monkeypatch.setattr(dgrep, "progress_enabled", lambda: False)
-    monkeypatch.setattr(dgrep, "show_search_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ldgrep.sys, "argv", ["ldgrep", *args])
+    monkeypatch.setattr(ldgrep, "configure_logging", lambda: None)
+    monkeypatch.setattr(ldgrep, "configure_colors", lambda color: ("<", ">"))
+    monkeypatch.setattr(ldgrep, "progress_enabled", lambda: False)
+    monkeypatch.setattr(ldgrep, "show_search_progress", lambda *args, **kwargs: None)
 
 
 @pytest.mark.parametrize(
@@ -64,7 +64,7 @@ def test_run_rejects_invalid_arguments(
     _prepare_cli(monkeypatch, *arguments)
 
     with pytest.raises(SystemExit) as exc_info:
-        dgrep._run()
+        ldgrep._run()
 
     assert exc_info.value.code == 2
     assert expected_message in capsys.readouterr().err
@@ -134,10 +134,10 @@ def test_run_searches_ordinary_files_with_parsed_options(
         "--color",
         "always",
     )
-    monkeypatch.setattr(dgrep, "collect_files", collect_files)
-    monkeypatch.setattr(dgrep, "search_file", search_file)
+    monkeypatch.setattr(ldgrep, "collect_files", collect_files)
+    monkeypatch.setattr(ldgrep, "search_file", search_file)
 
-    assert dgrep._run() == 0
+    assert ldgrep._run() == 0
 
     assert collection["paths"] == [str(tmp_path)]
     assert collection["formats"] == "+py"
@@ -166,16 +166,16 @@ def test_run_clears_completed_progress_line(
 ) -> None:
     file_path = tmp_path / "final.md"
     _prepare_cli(monkeypatch, "needle", str(file_path))
-    monkeypatch.setattr(dgrep, "collect_files", lambda *args: [file_path])
-    monkeypatch.setattr(dgrep, "search_file", lambda *args: 0)
-    monkeypatch.setattr(dgrep, "progress_enabled", lambda: True)
+    monkeypatch.setattr(ldgrep, "collect_files", lambda *args: [file_path])
+    monkeypatch.setattr(ldgrep, "search_file", lambda *args: 0)
+    monkeypatch.setattr(ldgrep, "progress_enabled", lambda: True)
 
     def show_progress(*args: object, **kwargs: object) -> None:
-        print("\r[####################] 100.0% final.md", end="", file=dgrep.sys.stderr)
+        print("\r[####################] 100.0% final.md", end="", file=ldgrep.sys.stderr)
 
-    monkeypatch.setattr(dgrep, "show_search_progress", show_progress)
+    monkeypatch.setattr(ldgrep, "show_search_progress", show_progress)
 
-    assert dgrep._run() == 1
+    assert ldgrep._run() == 1
 
     stderr = capsys.readouterr().err
     assert "100.0% final.md" in stderr
@@ -186,9 +186,9 @@ def test_run_returns_failure_when_no_supported_files_are_found(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _prepare_cli(monkeypatch, "needle", "input")
-    monkeypatch.setattr(dgrep, "collect_files", lambda *args: [])
+    monkeypatch.setattr(ldgrep, "collect_files", lambda *args: [])
 
-    assert dgrep._run() == 1
+    assert ldgrep._run() == 1
     assert capsys.readouterr().err == "No supported files found.\n"
 
 
@@ -203,9 +203,9 @@ def test_run_defaults_paths_to_current_directory(
         collected_paths.extend(paths)
         return []
 
-    monkeypatch.setattr(dgrep, "collect_files", collect_files)
+    monkeypatch.setattr(ldgrep, "collect_files", collect_files)
 
-    assert dgrep._run() == 1
+    assert ldgrep._run() == 1
 
     assert collected_paths == ["."]
     assert capsys.readouterr().err == "No supported files found.\n"
@@ -224,9 +224,9 @@ def test_run_reports_only_paths_actually_excluded(
     _prepare_cli(
         monkeypatch, "needle", str(tmp_path), "--exclude", "+custom"
     )
-    monkeypatch.setattr(dgrep, "search_file", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(ldgrep, "search_file", lambda *args, **kwargs: 1)
 
-    assert dgrep._run() == 0
+    assert ldgrep._run() == 0
 
     captured = capsys.readouterr()
     assert "Excluded 1 matching paths:" in captured.out
@@ -269,15 +269,15 @@ def test_run_searches_matching_archive_members(
         return 1
 
     _prepare_cli(monkeypatch, "needle", str(archive), "--include-archives")
-    monkeypatch.setattr(dgrep, "collect_files", lambda *args: [])
-    monkeypatch.setattr(dgrep, "collect_archives", lambda *args: [archive])
+    monkeypatch.setattr(ldgrep, "collect_files", lambda *args: [])
+    monkeypatch.setattr(ldgrep, "collect_archives", lambda *args: [archive])
     monkeypatch.setattr(
-        dgrep, "archive_member_names", lambda path: ("zip", [member, "ignored.bin"])
+        ldgrep, "archive_member_names", lambda path: ("zip", [member, "ignored.bin"])
     )
-    monkeypatch.setattr(dgrep, "copy_archive_member", copy_member)
-    monkeypatch.setattr(dgrep, "search_file", search_file)
+    monkeypatch.setattr(ldgrep, "copy_archive_member", copy_member)
+    monkeypatch.setattr(ldgrep, "search_file", search_file)
 
-    assert dgrep._run() == 0
+    assert ldgrep._run() == 0
 
     assert len(search_calls) == 1
     searched_path, display_name, link_path = search_calls[0]
@@ -298,15 +298,15 @@ def test_run_warns_and_continues_when_archive_cannot_be_read(
 ) -> None:
     archive = tmp_path / "broken.zip"
     _prepare_cli(monkeypatch, "needle", str(archive), "--include-archives")
-    monkeypatch.setattr(dgrep, "collect_files", lambda *args: [])
-    monkeypatch.setattr(dgrep, "collect_archives", lambda *args: [archive])
+    monkeypatch.setattr(ldgrep, "collect_files", lambda *args: [])
+    monkeypatch.setattr(ldgrep, "collect_archives", lambda *args: [archive])
 
     def fail_read(path: Path) -> tuple[str, list[str]]:
         raise OSError("broken archive")
 
-    monkeypatch.setattr(dgrep, "archive_member_names", fail_read)
+    monkeypatch.setattr(ldgrep, "archive_member_names", fail_read)
 
-    assert dgrep._run() == 1
+    assert ldgrep._run() == 1
 
     captured = capsys.readouterr()
     assert f"Warning: cannot read archive {archive}: broken archive" in captured.err
@@ -316,9 +316,9 @@ def test_run_warns_and_continues_when_archive_cannot_be_read(
 
 
 def test_main_returns_run_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(dgrep, "_run", lambda: 7)
+    monkeypatch.setattr(ldgrep, "_run", lambda: 7)
 
-    assert dgrep.main() == 7
+    assert ldgrep.main() == 7
 
 
 def test_main_reports_keyboard_interrupt(
@@ -329,8 +329,8 @@ def test_main_reports_keyboard_interrupt(
     def interrupt() -> int:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(dgrep, "_run", interrupt)
-    monkeypatch.setattr(dgrep, "print_error", errors.append)
+    monkeypatch.setattr(ldgrep, "_run", interrupt)
+    monkeypatch.setattr(ldgrep, "print_error", errors.append)
 
-    assert dgrep.main() == 130
+    assert ldgrep.main() == 130
     assert errors == ["Interrupted by user"]

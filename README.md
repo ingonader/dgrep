@@ -1,6 +1,6 @@
-# dgrep
+# ldgrep
 
-`dgrep` searches text and document files for a regular expression. The tool can extract text from common formats. By default, files with the following extensions are searched:
+`ldgrep` searches text and document files for a regular expression. The tool can extract text from common formats. By default, files with the following extensions are searched:
 
 * `.txt`: Plain-text files.
 * `.md`: Plain-text markdown files.
@@ -12,7 +12,7 @@
 
 The tool can search a single file or recursively search directories, and optionally searches within supported archive files like `.zip`, `.7z`, and various `.,tar` files.
 
-Files with matches are displayed as `file:///path/to/file.ext` , which in some terminals (like KDE's `konsole`) is rendered as link to open this file with the system's configured editor.
+Files with matches are displayed as `file:///path/to/file.ext` , which in some terminals (like KDE's `konsole`) is rendered as link to open this file with the system's configured editor. This was my inital motiviation to write this tool, and also the name derives from it ("link to document grep" -- hard to find a *grep name that is not already in use...)
 
 Matches are highlighted, and the tool can display context lines before/after matches, or limit the maximal line length around each match (useful for files with very long lines, to not clutter the results).
 
@@ -28,68 +28,68 @@ This tool has been developed for my own personal use. It was only tested on Linu
 
 ## Installation
 
-`dgrep` requires Python 3.12 or newer. The simplest way to run it without installing it permanently is with [`uv`](https://docs.astral.sh/uv/):
+`ldgrep` requires Python 3.12 or newer. The simplest way to run it without installing it permanently is with [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-uvx dgrep --help
+uvx ldgrep --help
 ```
 
 `uvx` downloads and runs the published package in an isolated environment. Alternatively, install it as a persistent command-line tool:
 
 ```bash
-uv tool install dgrep
-dgrep --help
+uv tool install ldgrep
+ldgrep --help
 ```
 
 To run from a checkout of this repository, install the project dependencies and invoke its command with `uv`:
 
 ```bash
 uv sync
-uv run dgrep --help
+uv run ldgrep --help
 ```
 
 ## Usage
 
 ```text
-dgrep [OPTIONS] PATTERN [PATH ...]
+ldgrep [OPTIONS] PATTERN [PATH ...]
 ```
 
 For example, search the default document types under a directory:
 
 ```bash
-uvx dgrep 'whale|sea' ./books
+uvx ldgrep 'whale|sea' ./books
 ```
 
 Search a particular file, ignoring case and showing two lines of context on each side:
 
 ```bash
-uvx dgrep -i -C 2 'chapter\s+[0-9]+' ./books/novel.txt
+uvx ldgrep -i -C 2 'chapter\s+[0-9]+' ./books/novel.txt
 ```
 
 Search source files by extension (the extension selector also accepts regexes)
 and filter file names by a regular expression:
 
 ```bash
-uvx dgrep -e 'py|js' -f 'test|example' 'TODO|FIXME' ./project
+uvx ldgrep -e 'py|js' -f 'test|example' 'TODO|FIXME' ./project
 ```
 
 Exclude dependency and generated-file directories while searching:
 
 ```bash
-uvx dgrep -x 'renv,venv' 'TODO|FIXME' ./project
+uvx ldgrep -x 'renv,venv' 'TODO|FIXME' ./project
 ```
 
 Enable archive searching with `-a`:
 
 ```bash
-uvx dgrep -a 'search pattern' ./downloads
+uvx ldgrep -a 'search pattern' ./downloads
 ```
 
-Use single quotes around patterns containing shell metacharacters such as `|`, `*`, parentheses, or spaces so the shell passes the complete regular expression to `dgrep`. Expressions use Python's regular-expression syntax.
+Use single quotes around patterns containing shell metacharacters such as `|`, `*`, parentheses, or spaces so the shell passes the complete regular expression to `ldgrep`. Expressions use Python's regular-expression syntax.
 
 ## Command-line options
 
-Run `dgrep --help` (or `uvx dgrep --help`) to see the options in the terminal.
+Run `ldgrep --help` (or `uvx ldgrep --help`) to see the options in the terminal.
 
 | Option | Short | Description |
 | --- | --- | --- |
@@ -130,7 +130,7 @@ The following document formats have dedicated text extraction:
 
 Other files selected by extension are read as UTF-8 text; invalid byte sequences are replaced. The default extension set is intentionally narrower than the formats supported by the extractors: `.doc`, `.ppt`, and `.xls` must be explicitly selected with `-e doc`, `-e ppt`, or `-e xls`.
 
-Most document formats are handled by Python packages installed with `dgrep`. Two legacy formats need additional system programs:
+Most document formats are handled by Python packages installed with `ldgrep`. Two legacy formats need additional system programs:
 
 * `.doc` files require `antiword` (on Debian or Ubuntu: `sudo apt install antiword`).
 * `.ppt` files require LibreOffice Impress (on Debian or Ubuntu:
@@ -158,13 +158,13 @@ uv run pytest
 To measure test coverage and show uncovered source lines, run:
 
 ```bash
-uv run pytest --cov=dgrep --cov-report=term-missing
+uv run pytest --cov=ldgrep --cov-report=term-missing
 ```
 
 To create a browsable HTML report instead, run:
 
 ```bash
-uv run pytest --cov=dgrep --cov-report=html
+uv run pytest --cov=ldgrep --cov-report=html
 ```
 
 Open `htmlcov/index.html` to browse the report.
@@ -174,7 +174,7 @@ To keep a human-readable snapshot in Git for comparison, generate and commit a
 Markdown coverage report:
 
 ```bash
-uv run pytest --cov=dgrep --cov-report=term-missing \
+uv run pytest --cov=ldgrep --cov-report=term-missing \
   --cov-report=markdown:coverage-report.md
 ```
 

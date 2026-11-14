@@ -7,7 +7,7 @@ import zipfile
 
 import pytest
 
-from dgrep import text_extraction
+from ldgrep import text_extraction
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 

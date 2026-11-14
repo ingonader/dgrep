@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dgrep import output
+from ldgrep import output
 
 
 class TerminalStream(StringIO):
