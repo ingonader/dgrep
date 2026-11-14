@@ -506,6 +506,71 @@ def test_odf_reports_missing_content_and_preserves_inline_spacing(tmp_path: Path
     ]
 
 
+def test_odf_extracts_nested_content_links_and_metadata(tmp_path: Path) -> None:
+    """Verify ODF tables, frames, notes, comments, links, and metadata."""
+    document = tmp_path / "rich-content.odt"
+    content = b"""<office:document-content
+        xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+        xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+        xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+        xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+        xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+        xmlns:xlink="http://www.w3.org/1999/xlink">
+      <office:body><office:text>
+        <table:table><table:table-row><table:table-cell>
+          <text:p>Table cell text</text:p>
+        </table:table-cell></table:table-row></table:table>
+        <draw:frame><draw:text-box><text:p>Frame text</text:p></draw:text-box></draw:frame>
+        <text:p>Link <text:a xlink:href="https://example.test/doc">target</text:a></text:p>
+        <text:p>Footnote <text:note><text:note-citation>1</text:note-citation>
+          <text:note-body><text:p>Footnote body</text:p></text:note-body>
+        </text:note></text:p>
+        <text:p>Endnote <text:note text:note-class="endnote">
+          <text:note-citation>2</text:note-citation>
+          <text:note-body><text:p>Endnote body</text:p></text:note-body>
+        </text:note></text:p>
+        <office:annotation><text:p>Comment text</text:p></office:annotation>
+        <presentation:notes><draw:frame><draw:text-box>
+          <text:p>Speaker note text</text:p>
+        </draw:text-box></draw:frame></presentation:notes>
+      </office:text></office:body>
+    </office:document-content>"""
+    metadata = b"""<office:document-meta
+        xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+        xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
+        xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <office:meta>
+        <dc:title>Document title</dc:title>
+        <dc:subject>Document subject</dc:subject>
+        <meta:keyword>alpha</meta:keyword><meta:keyword>beta</meta:keyword>
+        <dc:description>Document description</dc:description>
+      </office:meta>
+    </office:document-meta>"""
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("content.xml", content)
+        archive.writestr("meta.xml", metadata)
+
+    lines = text_extraction.extract_odf_text(document)
+    extracted = "\n".join(lines)
+
+    for expected in [
+        "Table cell text",
+        "Frame text",
+        "Link target (https://example.test/doc)",
+        "Footnote body",
+        "Endnote body",
+        "Comment text",
+        "Speaker note text",
+        "Title: Document title",
+        "Subject: Document subject",
+        "Keywords: alpha, beta",
+        "Description: Document description",
+    ]:
+        assert expected in extracted
+    assert lines.count("Footnote body") == 1
+    assert lines.count("Endnote body") == 1
+
+
 def test_xlsx_normalizes_empty_cells_and_closes_workbook(monkeypatch) -> None:
     """Verify empty values, custom separators, and workbook cleanup."""
     import types
@@ -607,11 +672,13 @@ def test_xls_normalizes_cell_types_and_unknown_errors(monkeypatch) -> None:
     ]
 
 
-def test_ods_extracts_typed_values_inline_text_and_repeated_cells(monkeypatch) -> None:
+def test_ods_extracts_typed_values_inline_text_and_repeated_cells(
+    monkeypatch, tmp_path: Path
+) -> None:
     """Verify ODS text serialization and typed-cell fallbacks."""
     import types
     from odf.table import CoveredTableCell, Table, TableCell, TableRow
-    from odf.text import LineBreak, P, S, Span, Tab
+    from odf.text import A, LineBreak, P, S, Span, Tab
 
     row = TableRow()
 
@@ -620,6 +687,7 @@ def test_ods_extracts_typed_values_inline_text_and_repeated_cells(monkeypatch) -
     paragraph.addElement(S(c=2))
     paragraph.addElement(Span(text="nested"))
     paragraph.addElement(Tab())
+    paragraph.addElement(A(href="https://example.test/sheet", text="linked"))
     paragraph.addElement(LineBreak())
     paragraph.addText("last")
     visible.addElement(paragraph)
@@ -662,8 +730,28 @@ def test_ods_extracts_typed_values_inline_text_and_repeated_cells(monkeypatch) -
         lambda path: document,
     )
 
-    assert text_extraction.extract_ods_text(Path("sample"), separator=";") == [
-        "Data;visible  nested\t\nlast;str;1.5;2;0.5;true;2024-01-02;PT1H;fallback;fallback date;;;;"
+    source = tmp_path / "sample.ods"
+    content = b"""<office:document-content
+        xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+        xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+        xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0">
+      <office:body><office:spreadsheet>
+        <draw:frame><draw:text-box><text:p>Floating text box</text:p></draw:text-box></draw:frame>
+      </office:spreadsheet></office:body>
+    </office:document-content>"""
+    metadata = b"""<office:document-meta
+        xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+        xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <office:meta><dc:title>Sheet title</dc:title></office:meta>
+    </office:document-meta>"""
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("content.xml", content)
+        archive.writestr("meta.xml", metadata)
+
+    assert text_extraction.extract_ods_text(source, separator=";") == [
+        "Data;visible  nested\tlinked (https://example.test/sheet)\nlast;str;1.5;2;0.5;true;2024-01-02;PT1H;fallback;fallback date;;;;",
+        "Floating text box",
+        "Title: Sheet title",
     ]
 
 

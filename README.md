@@ -125,8 +125,8 @@ The following document formats have dedicated text extraction:
 | `.ppt` | Legacy PowerPoint content, converted to PPTX with LibreOffice first. |
 | `.xlsx` | Worksheet rows, including the sheet name and cell values. |
 | `.xls` | Legacy Excel worksheet rows and values. |
-| `.ods` | Spreadsheet rows, including sheet names, visible cell text, and stored values. |
-| `.odt`, `.odp` | Text paragraphs and headings in OpenDocument content. |
+| `.ods` | Spreadsheet rows, visible cell text and stored values, text outside cells, hyperlinks, and document metadata. |
+| `.odt`, `.odp` | Text and headings, including tables, frames, notes, comments, and hyperlink URLs, plus document metadata. |
 
 Other files selected by extension are read as UTF-8 text; invalid byte sequences are replaced. The default extension set is intentionally narrower than the formats supported by the extractors: `.doc`, `.ppt`, and `.xls` must be explicitly selected with `-e doc`, `-e ppt`, or `-e xls`.
 

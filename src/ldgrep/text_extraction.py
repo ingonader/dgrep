@@ -5,6 +5,11 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 ODF_TEXT_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
+ODF_TABLE_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
+ODF_XLINK_NAMESPACE = "{http://www.w3.org/1999/xlink}"
+ODF_DC_NAMESPACE = "{http://purl.org/dc/elements/1.1/}"
+ODF_META_NAMESPACE = "{urn:oasis:names:tc:opendocument:xmlns:meta:1.0}"
+ODF_PARAGRAPH_TAGS = {f"{ODF_TEXT_NAMESPACE}p", f"{ODF_TEXT_NAMESPACE}h"}
 
 
 def extract_pdf_text_pypdf(path: Path) -> list[str]:
@@ -282,19 +287,132 @@ def extract_ppt_text(path: Path) -> list[str]:
         ) from exc
 
 
-def extract_odf_text(path: Path) -> list[str]:
-    """Extract paragraphs and headings from an OpenDocument text file.
+def _extract_odf_xml_text(element: ET.Element) -> str:
+    """Serialize ODF inline content, retaining spacing and hyperlink targets.
 
     Args:
-        path: OpenDocument Text or Presentation file containing `content.xml`.
+        element: XML element whose inline content should be serialized.
 
     Returns:
-        Paragraph and heading text split into lines.
+        The element's text with ODF spacing, line breaks, and link URLs included.
+    """
+    extracted = [element.text or ""]
+
+    for child in element:
+        if child.tag == f"{ODF_TEXT_NAMESPACE}s":
+            extracted.append(" " * int(child.get(f"{ODF_TEXT_NAMESPACE}c", "1")))
+        elif child.tag == f"{ODF_TEXT_NAMESPACE}tab":
+            extracted.append("\t")
+        elif child.tag == f"{ODF_TEXT_NAMESPACE}line-break":
+            extracted.append("\n")
+        elif child.tag == f"{ODF_TEXT_NAMESPACE}a":
+            link_text = _extract_odf_xml_text(child)
+            href = child.get(f"{ODF_XLINK_NAMESPACE}href")
+            extracted.append(f"{link_text} ({href})" if href else link_text)
+        elif child.tag in ODF_PARAGRAPH_TAGS:
+            pass
+        else:
+            extracted.append(_extract_odf_xml_text(child))
+
+        extracted.append(child.tail or "")
+
+    return "".join(extracted)
+
+
+def _extract_odf_paragraphs(
+    content: bytes, *, exclude_table_cells: bool = False
+) -> list[str]:
+    """Extract paragraphs from ODF content XML.
+
+    Args:
+        content: Raw bytes from the package's `content.xml` file.
+        exclude_table_cells: Whether to omit paragraphs inside spreadsheet cells.
+
+    Returns:
+        Extracted paragraph and heading text split into lines.
+
+    Raises:
+        ET.ParseError: If `content` is not well-formed XML.
+    """
+    root = ET.fromstring(content)
+    parents = {
+        child: parent
+        for parent in root.iter()
+        for child in parent
+    } if exclude_table_cells else {}
+    lines = []
+
+    for element in root.iter():
+        if element.tag not in ODF_PARAGRAPH_TAGS:
+            continue
+
+        parent = parents.get(element)
+        in_table_cell = False
+        while parent is not None:
+            if parent.tag == f"{ODF_TABLE_NAMESPACE}table-cell":
+                in_table_cell = True
+                break
+            parent = parents.get(parent)
+
+        if exclude_table_cells and in_table_cell:
+            continue
+
+        lines.extend(_extract_odf_xml_text(element).splitlines() or [""])
+
+    return lines
+
+
+def _extract_odf_metadata(metadata: bytes | None) -> list[str]:
+    """Extract standard document metadata from ODF metadata XML.
+
+    Args:
+        metadata: Raw bytes from `meta.xml`, or `None` if the package has no
+            metadata file.
+
+    Returns:
+        Labeled lines for each available title, subject, keyword, and description.
+
+    Raises:
+        ET.ParseError: If `metadata` is not well-formed XML.
+    """
+    if metadata is None:
+        return []
+
+    root = ET.fromstring(metadata)
+    fields = (
+        ("Title", f"{ODF_DC_NAMESPACE}title"),
+        ("Subject", f"{ODF_DC_NAMESPACE}subject"),
+        ("Keywords", f"{ODF_META_NAMESPACE}keyword"),
+        ("Description", f"{ODF_DC_NAMESPACE}description"),
+    )
+    lines = []
+
+    for label, tag in fields:
+        values = [
+            "".join(element.itertext()).strip()
+            for element in root.iter(tag)
+            if "".join(element.itertext()).strip()
+        ]
+        if values:
+            lines.append(f"{label}: {', '.join(values)}")
+
+    return lines
+
+
+def _read_odf_parts(path: Path) -> tuple[bytes, bytes | None]:
+    """Read the content and optional metadata XML parts from an ODF package.
+
+    Args:
+        path: Path to the ODF ZIP archive.
+
+    Returns:
+        A tuple containing the required `content.xml` bytes and the optional
+        `meta.xml` bytes.
 
     Raises:
         RuntimeError: If the archive does not contain `content.xml`.
+        zipfile.BadZipFile: If `path` is not a valid ZIP archive.
     """
-    # ODF text documents are ZIP containers whose document content is in XML.
     with zipfile.ZipFile(path) as archive:
         try:
             content = archive.read("content.xml")
@@ -303,42 +421,30 @@ def extract_odf_text(path: Path) -> list[str]:
                 "OpenDocument file does not contain content.xml"
             ) from exc
 
-    root = ET.fromstring(content)
-    lines = []
+        try:
+            metadata = archive.read("meta.xml")
+        except KeyError:
+            metadata = None
 
-    def extract_element_text(element) -> str:
-        """Convert an XML element subtree, including ODF spacing markers, to text.
+    return content, metadata
 
-        Args:
-            element: XML element whose child content should be serialized.
 
-        Returns:
-            Text represented by the element, preserving spaces, tabs, and breaks.
-        """
-        extracted = [element.text or ""]
+def extract_odf_text(path: Path) -> list[str]:
+    """Extract text and metadata from an OpenDocument text or presentation.
 
-        for child in element:
-            if child.tag == f"{ODF_TEXT_NAMESPACE}s":
-                extracted.append(" " * int(child.get(f"{ODF_TEXT_NAMESPACE}c", "1")))
-            elif child.tag == f"{ODF_TEXT_NAMESPACE}tab":
-                extracted.append("\t")
-            elif child.tag == f"{ODF_TEXT_NAMESPACE}line-break":
-                extracted.append("\n")
-            else:
-                extracted.append(extract_element_text(child))
+    Args:
+        path: OpenDocument Text or Presentation file containing `content.xml`.
 
-            extracted.append(child.tail or "")
+    Returns:
+        Paragraph text, including tables, notes, comments, and text frames,
+        followed by available document metadata.
 
-        return "".join(extracted)
-
-    paragraph_tags = {
-        f"{ODF_TEXT_NAMESPACE}p",
-        f"{ODF_TEXT_NAMESPACE}h",
-    }
-    for element in root.iter():
-        if element.tag in paragraph_tags:
-            lines.extend(extract_element_text(element).splitlines() or [""])
-
+    Raises:
+        RuntimeError: If the archive does not contain `content.xml`.
+    """
+    content, metadata = _read_odf_parts(path)
+    lines = _extract_odf_paragraphs(content)
+    lines.extend(_extract_odf_metadata(metadata))
     return lines
 
 
@@ -434,7 +540,7 @@ def extract_xls_text(path: Path, separator: str = "|") -> list[str]:
 
 
 def extract_ods_text(path: Path, separator: str = "|") -> list[str]:
-    """Extract worksheet names and cell contents from an ODS spreadsheet.
+    """Extract spreadsheet rows, standalone text, and ODS metadata.
 
     Visible paragraph text takes precedence; typed cell attributes provide a
     fallback for values without textual paragraphs.
@@ -444,10 +550,10 @@ def extract_ods_text(path: Path, separator: str = "|") -> list[str]:
         separator: String used between the sheet name and cell values.
 
     Returns:
-        One delimited string for each worksheet row.
+        Delimited worksheet rows followed by text outside cells and metadata.
 
     Raises:
-        RuntimeError: If odfpy is unavailable.
+        RuntimeError: If odfpy is unavailable or the archive lacks `content.xml`.
     """
     try:
         from odf.opendocument import load
@@ -487,6 +593,14 @@ def extract_ods_text(path: Path, separator: str = "|") -> list[str]:
                     parts.append("\t")
                 elif node.tagName == "text:line-break":
                     parts.append("\n")
+                elif node.tagName == "text:a":
+                    for child in node.childNodes:
+                        visit(child)
+                    href = node.getAttribute("href")
+                    if href:
+                        parts.append(f" ({href})")
+                elif node.tagName in {"text:p", "text:h"}:
+                    return
                 else:
                     for child in node.childNodes:
                         visit(child)
@@ -575,6 +689,10 @@ def extract_ods_text(path: Path, separator: str = "|") -> list[str]:
                 values.extend([""] * (repeat - 1))
 
             lines.append(separator.join([sheet_name, *values]))
+
+    content, metadata = _read_odf_parts(path)
+    lines.extend(_extract_odf_paragraphs(content, exclude_table_cells=True))
+    lines.extend(_extract_odf_metadata(metadata))
 
     return lines
 
